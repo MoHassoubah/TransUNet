@@ -142,12 +142,22 @@ class ResNetV2(nn.Module):
     def forward(self, x):
         features = []
         b, c, in_size, _ = x.size()
-        x = self.root(x)
+        # print("x before root")
+        # print(x.size())
+        x = self.root(x) #after root h, w are divided by 2 #Wout after the root =(win+1)/2
+        print("x after root")
+        print(x.size())
         features.append(x)
-        x = nn.MaxPool2d(kernel_size=3, stride=2, padding=0)(x)
-        for i in range(len(self.body)-1):
+        x = nn.MaxPool2d(kernel_size=3, stride=2, padding=0)(x)#after max pool h, w are divided by 2-->wout=(win-1)/2
+        print("x after max pool")
+        print(x.size())
+        for i in range(len(self.body)-1): #-1 as range stats from 0 and here he excludes the last one
             x = self.body[i](x)
-            right_size = int(in_size / 4 / (i+1))
+            right_size = int(round(in_size / 4 / (i+1)))# after 1st body h,w divided by 1 , after 2nd body h,w divided by 2 (as if seems that every one time, body size should be divided by 4) 
+            print("x.size()[2]")
+            print(x.size()[2])
+            print("right_size")
+            print(right_size)
             if x.size()[2] != right_size:
                 pad = right_size - x.size()[2]
                 assert pad < 3 and pad > 0, "x {} should {}".format(x.size(), right_size)

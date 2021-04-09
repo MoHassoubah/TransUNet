@@ -130,9 +130,14 @@ class Embeddings(nn.Module):
 
         if config.patches.get("grid") is not None:   # ResNet
             grid_size = config.patches["grid"]
-            patch_size = (img_size[0] // 16 // grid_size[0], img_size[1] // 16 // grid_size[1])
+            #seems most of the time the patch_size=1
+            patch_size = (img_size[0] // 16 // grid_size[0], img_size[1] // 16 // grid_size[1])# img_size / 16 would be the size of the image after the resnet 
+            print("patch_size")
+            print(patch_size)
+            # print("grid_size")
+            # print(grid_size)
             patch_size_real = (patch_size[0] * 16, patch_size[1] * 16)
-            n_patches = (img_size[0] // patch_size_real[0]) * (img_size[1] // patch_size_real[1])  
+            n_patches = (img_size[0] // patch_size_real[0]+1) * (img_size[1] // patch_size_real[1]+1)  #should be the grid size[0]x grid size[1]
             self.hybrid = True
         else:
             patch_size = _pair(config.patches["size"])
@@ -309,7 +314,21 @@ class DecoderBlock(nn.Module):
     def forward(self, x, skip=None):
         x = self.up(x)
         if skip is not None:
-            x = torch.cat([x, skip], dim=1)
+            print("x size")
+            print(x.size())
+            print("skip size")
+            print(skip.size())
+            
+            if x.size()[2] != skip.size()[2]:
+                pad = x.size()[2]-skip.size()[2]
+                assert pad > 0, "x {} should {}".format(skip.size(), x.size()[2])
+                feat = torch.zeros((skip.size()[0], skip.size()[1], x.size()[2], x.size()[3]), device=skip.device)
+                feat[:, :, 0:skip.size()[2], 0:skip.size()[3]] = skip[:]
+            else:
+                feat = skip
+            x = torch.cat([x, feat], dim=1)
+            print("cat size")
+            print(x.size())
         x = self.conv1(x)
         x = self.conv2(x)
         return x
