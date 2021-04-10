@@ -132,12 +132,12 @@ class Embeddings(nn.Module):
             grid_size = config.patches["grid"]
             #seems most of the time the patch_size=1
             patch_size = (img_size[0] // 16 // grid_size[0], img_size[1] // 16 // grid_size[1])# img_size / 16 would be the size of the image after the resnet 
-            print("patch_size")
-            print(patch_size)
+            # print("patch_size")
+            # print(patch_size)
             # print("grid_size")
             # print(grid_size)
             patch_size_real = (patch_size[0] * 16, patch_size[1] * 16)
-            n_patches = (img_size[0] // patch_size_real[0]+1) * (img_size[1] // patch_size_real[1]+1)  #should be the grid size[0]x grid size[1]
+            n_patches = (img_size[0] // patch_size_real[0]) * (img_size[1] // patch_size_real[1])  #should be the grid size[0]x grid size[1]
             self.hybrid = True
         else:
             patch_size = _pair(config.patches["size"])
@@ -150,20 +150,32 @@ class Embeddings(nn.Module):
         self.patch_embeddings = Conv2d(in_channels=in_channels,
                                        out_channels=config.hidden_size,
                                        kernel_size=patch_size,
-                                       stride=patch_size)
+                                       stride=patch_size)#output size =img_size[0] after resnet / patch_size[0] = n_patches^(1/2)
         self.position_embeddings = nn.Parameter(torch.zeros(1, n_patches, config.hidden_size))
 
         self.dropout = Dropout(config.transformer["dropout_rate"])
 
 
     def forward(self, x):
+        # print(x.shape)
         if self.hybrid:
             x, features = self.hybrid_model(x)
+            # print("x, features = self.hybrid_model(x)")
+            # print(x.shape)
         else:
             features = None
         x = self.patch_embeddings(x)  # (B, hidden. n_patches^(1/2), n_patches^(1/2))
+        # print("x = self.patch_embeddings(x)")
+        # print(x.shape)
         x = x.flatten(2)
+        # print("x = x.flatten(2)")
+        # print(x.shape)
         x = x.transpose(-1, -2)  # (B, n_patches, hidden)
+        # print("x = x.transpose(-1, -2)")
+        # print(x.shape)
+        
+        # print(" self.position_embeddings")
+        # print( self.position_embeddings.shape)
 
         embeddings = x + self.position_embeddings
         embeddings = self.dropout(embeddings)
@@ -194,15 +206,15 @@ class Block(nn.Module):
     def load_from(self, weights, n_block):
         ROOT = f"Transformer/encoderblock_{n_block}"
         with torch.no_grad():
-            query_weight = np2th(weights[pjoin(ROOT, ATTENTION_Q, "kernel")]).view(self.hidden_size, self.hidden_size).t()
-            key_weight = np2th(weights[pjoin(ROOT, ATTENTION_K, "kernel")]).view(self.hidden_size, self.hidden_size).t()
-            value_weight = np2th(weights[pjoin(ROOT, ATTENTION_V, "kernel")]).view(self.hidden_size, self.hidden_size).t()
-            out_weight = np2th(weights[pjoin(ROOT, ATTENTION_OUT, "kernel")]).view(self.hidden_size, self.hidden_size).t()
+            query_weight = np2th(weights[(ROOT+ '/'+ATTENTION_Q+ "/kernel")]).view(self.hidden_size, self.hidden_size).t()
+            key_weight = np2th(weights[(ROOT+ '/'+ ATTENTION_K+ "/kernel")]).view(self.hidden_size, self.hidden_size).t()
+            value_weight = np2th(weights[(ROOT+ '/'+ ATTENTION_V+ "/kernel")]).view(self.hidden_size, self.hidden_size).t()
+            out_weight = np2th(weights[(ROOT+ '/'+ ATTENTION_OUT+ "/kernel")]).view(self.hidden_size, self.hidden_size).t()
 
-            query_bias = np2th(weights[pjoin(ROOT, ATTENTION_Q, "bias")]).view(-1)
-            key_bias = np2th(weights[pjoin(ROOT, ATTENTION_K, "bias")]).view(-1)
-            value_bias = np2th(weights[pjoin(ROOT, ATTENTION_V, "bias")]).view(-1)
-            out_bias = np2th(weights[pjoin(ROOT, ATTENTION_OUT, "bias")]).view(-1)
+            query_bias = np2th(weights[(ROOT+ '/'+ ATTENTION_Q+ "/bias")]).view(-1)
+            key_bias = np2th(weights[(ROOT+ '/'+ ATTENTION_K+ "/bias")]).view(-1)
+            value_bias = np2th(weights[(ROOT+ '/'+ ATTENTION_V+ "/bias")]).view(-1)
+            out_bias = np2th(weights[(ROOT+ '/'+ ATTENTION_OUT+ "/bias")]).view(-1)
 
             self.attn.query.weight.copy_(query_weight)
             self.attn.key.weight.copy_(key_weight)
@@ -213,20 +225,20 @@ class Block(nn.Module):
             self.attn.value.bias.copy_(value_bias)
             self.attn.out.bias.copy_(out_bias)
 
-            mlp_weight_0 = np2th(weights[pjoin(ROOT, FC_0, "kernel")]).t()
-            mlp_weight_1 = np2th(weights[pjoin(ROOT, FC_1, "kernel")]).t()
-            mlp_bias_0 = np2th(weights[pjoin(ROOT, FC_0, "bias")]).t()
-            mlp_bias_1 = np2th(weights[pjoin(ROOT, FC_1, "bias")]).t()
+            mlp_weight_0 = np2th(weights[(ROOT+ '/'+ FC_0+ "/kernel")]).t()
+            mlp_weight_1 = np2th(weights[(ROOT+ '/'+ FC_1+ "/kernel")]).t()
+            mlp_bias_0 = np2th(weights[(ROOT+ '/'+ FC_0+ "/bias")]).t()
+            mlp_bias_1 = np2th(weights[(ROOT+ '/'+ FC_1+ "/bias")]).t()
 
             self.ffn.fc1.weight.copy_(mlp_weight_0)
             self.ffn.fc2.weight.copy_(mlp_weight_1)
             self.ffn.fc1.bias.copy_(mlp_bias_0)
             self.ffn.fc2.bias.copy_(mlp_bias_1)
 
-            self.attention_norm.weight.copy_(np2th(weights[pjoin(ROOT, ATTENTION_NORM, "scale")]))
-            self.attention_norm.bias.copy_(np2th(weights[pjoin(ROOT, ATTENTION_NORM, "bias")]))
-            self.ffn_norm.weight.copy_(np2th(weights[pjoin(ROOT, MLP_NORM, "scale")]))
-            self.ffn_norm.bias.copy_(np2th(weights[pjoin(ROOT, MLP_NORM, "bias")]))
+            self.attention_norm.weight.copy_(np2th(weights[(ROOT+ '/'+ ATTENTION_NORM+ "/scale")]))
+            self.attention_norm.bias.copy_(np2th(weights[(ROOT+ '/'+ ATTENTION_NORM+ "/bias")]))
+            self.ffn_norm.weight.copy_(np2th(weights[(ROOT+ '/'+ MLP_NORM+ "/scale")]))
+            self.ffn_norm.bias.copy_(np2th(weights[(ROOT+ '/'+ MLP_NORM+ "/bias")]))
 
 
 class Encoder(nn.Module):
@@ -314,21 +326,13 @@ class DecoderBlock(nn.Module):
     def forward(self, x, skip=None):
         x = self.up(x)
         if skip is not None:
-            print("x size")
-            print(x.size())
-            print("skip size")
-            print(skip.size())
-            
-            if x.size()[2] != skip.size()[2]:
-                pad = x.size()[2]-skip.size()[2]
-                assert pad > 0, "x {} should {}".format(skip.size(), x.size()[2])
-                feat = torch.zeros((skip.size()[0], skip.size()[1], x.size()[2], x.size()[3]), device=skip.device)
-                feat[:, :, 0:skip.size()[2], 0:skip.size()[3]] = skip[:]
-            else:
-                feat = skip
-            x = torch.cat([x, feat], dim=1)
-            print("cat size")
-            print(x.size())
+            # print("x size")
+            # print(x.size())
+            # print("skip size")
+            # print(skip.size())
+            x = torch.cat([x, skip], dim=1)
+            # print("cat size")
+            # print(x.size())
         x = self.conv1(x)
         x = self.conv2(x)
         return x
@@ -403,8 +407,10 @@ class VisionTransformer(nn.Module):
 
     def forward(self, x):
         if x.size()[1] == 1:
-            x = x.repeat(1,3,1,1)
+            x = x.repeat(1,3,1,1)# new size of x = 1 x 3 x 1 x 1 x orignal size of x
         x, attn_weights, features = self.transformer(x)  # (B, n_patch, hidden)
+        # print("x in vision transformer")
+        # print(x.size())
         x = self.decoder(x, features)
         logits = self.segmentation_head(x)
         return logits
