@@ -1,0 +1,4 @@
+-contrastive loss
+-try pretraining input and output the same
+-try pretraining like masking parts of the input and autocompletion
+-check the uncertainties for both pretraining techniques

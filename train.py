@@ -7,13 +7,19 @@ import torch
 import torch.backends.cudnn as cudnn
 from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
-from trainer import trainer_synapse
+from trainer import trainer_kitti
+
+from datasets.lidar_dataset.parser import Parser
+import yaml
+
+
+DATA_DIRECTORY = 'C:\lidar_datasets\kitti_data'     #'./data/GTA5' #should be the path of the kitti LiDAR data
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
-                    default='../data/Synapse/train_npz', help='root dir for data')
+                    default=DATA_DIRECTORY, help='root dir for data')
 parser.add_argument('--dataset', type=str,
-                    default='Synapse', help='experiment_name')
+                    default='Kitti', help='experiment_name')
 parser.add_argument('--list_dir', type=str,
                     default='./lists/lists_Synapse', help='list dir')
 parser.add_argument('--num_classes', type=int,
@@ -39,6 +45,27 @@ parser.add_argument('--vit_name', type=str,
                     default='R50-ViT-B_16', help='select one vit model')
 parser.add_argument('--vit_patches_size', type=int,
                     default=16, help='vit_patches_size, default is 16')
+parser.add_argument(
+  '--data_kitti_cfg', '-dck',
+  type=str,
+  required=False,
+  default='datasets/lidar_dataset/config/labels/semantic-kitti.yaml',
+  help='Classification yaml cfg file. See /config/labels for sample. No default!',
+)
+parser.add_argument(
+  '--data_nuscenes_cfg', '-dcn',
+  type=str,
+  required=False,
+  default='datasets/lidar_dataset/config/labels/semantic-nuscenes.yaml',
+  help='Classification yaml cfg file. See /config/labels for sample. No default!',
+)
+parser.add_argument(
+  '--arch_cfg', '-ac',
+  type=str,
+  required=False,
+  default='datasets/lidar_dataset/config/arch/sensor_dataset.yaml',
+  help='Architecture yaml cfg file. See /config/arch for sample. No default!',
+  )
 args = parser.parse_args()
 
 
@@ -62,11 +89,35 @@ if __name__ == "__main__":
             'num_classes': 9,
         },
     }
-    args.num_classes = dataset_config[dataset_name]['num_classes']
-    args.root_path = dataset_config[dataset_name]['root_path']
-    args.list_dir = dataset_config[dataset_name]['list_dir']
+    
+    
+                                   
+    # open arch config file
+    try:
+      print("Opening arch config file %s" % args.arch_cfg)
+      ARCH = yaml.safe_load(open(args.arch_cfg, 'r'))
+    except Exception as e:
+      print(e)
+      print("Error opening arch yaml file.")
+      quit()
+
+    # open data config file
+    try:
+      print("Opening data config file %s" % args.data_kitti_cfg)
+      DATA_kitti = yaml.safe_load(open(args.data_kitti_cfg, 'r'))
+    except Exception as e:
+      print(e)
+      print("Error opening data yaml file.")
+      quit()
+      
+    
+    args.img_size = (ARCH["dataset_kitti"]["sensor"]["img_prop"]["height"], ARCH["dataset_kitti"]["sensor"]["img_prop"]["width"])
+    
+    # args.num_classes = dataset_config[dataset_name]['num_classes']
+    # args.root_path = dataset_config[dataset_name]['root_path']
+    # args.list_dir = dataset_config[dataset_name]['list_dir']
     args.is_pretrain = True
-    args.exp = 'TU_' + dataset_name + str(args.img_size)#TU_Synapse224
+    args.exp = 'TU_' + dataset_name + str(args.img_size[0])+'x'+str(args.img_size[1])#TU_Synapse224
     #creats a path with a name that has all the properties of the experiment
     snapshot_path = "../model/{}/{}".format(args.exp, 'TU')#../model/TU_Synapse224/TU
     snapshot_path = snapshot_path + '_pretrain' if args.is_pretrain else snapshot_path
@@ -77,8 +128,29 @@ if __name__ == "__main__":
     snapshot_path = snapshot_path + '_epo' +str(args.max_epochs) if args.max_epochs != 30 else snapshot_path
     snapshot_path = snapshot_path+'_bs'+str(args.batch_size)
     snapshot_path = snapshot_path + '_lr' + str(args.base_lr) if args.base_lr != 0.01 else snapshot_path
-    snapshot_path = snapshot_path + '_'+str(args.img_size)
+    snapshot_path = snapshot_path + '_'+ str(args.img_size[0])+'x'+str(args.img_size[1])
     snapshot_path = snapshot_path + '_s'+str(args.seed) if args.seed!=1234 else snapshot_path
+    
+    
+    
+    kitti_parser = Parser(root=args.root_path,
+                          train_sequences=DATA_kitti["split"]["train"],
+                          valid_sequences=DATA_kitti["split"]["valid"],
+                          test_sequences=None,
+                          labels=DATA_kitti["labels"],
+                          color_map=DATA_kitti["color_map"],
+                          learning_map=DATA_kitti["learning_map"],
+                          learning_map_inv=DATA_kitti["learning_map_inv"],
+                          sensor=ARCH["dataset_kitti"]["sensor"],
+                          max_points=ARCH["dataset_kitti"]["max_points"],
+                          batch_size=args.batch_size,
+                          workers=ARCH["train"]["workers"],
+                          max_iters=None,
+                          gt=True,
+                          shuffle_train=True,
+                          nuscenes_dataset=False)
+                          
+    args.num_classes = kitti_parser.get_n_classes()
 
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
@@ -86,9 +158,10 @@ if __name__ == "__main__":
     config_vit.n_classes = args.num_classes
     config_vit.n_skip = args.n_skip
     if args.vit_name.find('R50') != -1:
-        config_vit.patches.grid = (int(args.img_size / args.vit_patches_size), int(args.img_size / args.vit_patches_size))
+        config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
     net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes).cuda()
     net.load_from(weights=np.load(config_vit.pretrained_path))
 
-    trainer = {'Synapse': trainer_synapse,}
-    trainer[dataset_name](args, net, snapshot_path)
+    trainer = {'Kitti': trainer_kitti,}
+    
+    trainer[dataset_name](args, net, snapshot_path,kitti_parser)

@@ -119,7 +119,7 @@ class ResNetV2(nn.Module):
 
         #Wout after the root =(win+1)/2
         self.root = nn.Sequential(OrderedDict([
-            ('conv', StdConv2d(3, width, kernel_size=7, stride=2, bias=False, padding=3)),
+            ('conv', StdConv2d(5, width, kernel_size=7, stride=2, bias=False, padding=3)), #original input channel 3
             ('gn', nn.GroupNorm(32, width, eps=1e-6)),
             ('relu', nn.ReLU(inplace=True)),
             # ('pool', nn.MaxPool2d(kernel_size=3, stride=2, padding=0))
@@ -142,7 +142,7 @@ class ResNetV2(nn.Module):
 
     def forward(self, x):
         features = []
-        b, c, in_size, _ = x.size()
+        b, c, in_size_row, in_size_col = x.size()
         # print("x before root")
         # print(x.size())
         x = self.root(x) #after root h, w are divided by 2 #Wout after the root =(win+1)/2
@@ -154,15 +154,20 @@ class ResNetV2(nn.Module):
         # print(x.size())
         for i in range(len(self.body)-1): #-1 as range stats from 0 and here he excludes the last one
             x = self.body[i](x)
-            right_size = int((in_size / 4 / (i+1)))# after 1st body h,w divided by 1 , after 2nd body h,w divided by 2 (as if seems that every one time, body size should be divided by 4) 
+            right_size_row = int((in_size_row / 4 / (i+1)))# after 1st body h,w divided by 1 , after 2nd body h,w divided by 2 (as if seems that every one time, body size should be divided by 4) 
+            right_size_col = int((in_size_col / 4 / (i+1)))
             # print("x.size()[2]")
             # print(x.size()[2])
             # print("right_size")
             # print(right_size)
-            if x.size()[2] != right_size:
-                pad = right_size - x.size()[2]
-                assert pad < 3 and pad > 0, "x {} should {}".format(x.size(), right_size)
-                feat = torch.zeros((b, x.size()[1], right_size, right_size), device=x.device)
+            if x.size()[2] != right_size_row or x.size()[3] != right_size_col:
+                if x.size()[2] != right_size_row :
+                    pad_row = right_size_row - x.size()[2]
+                    assert pad_row < 3 and pad_row > 0, "x {} should {}".format(x.size(), right_size_row)
+                if x.size()[3] != right_size_col:
+                    pad_col = right_size_col - x.size()[3]
+                    assert pad_col < 3 and pad_col > 0, "x {} should {}".format(x.size(), right_size_col)
+                feat = torch.zeros((b, x.size()[1], right_size_row, right_size_col), device=x.device)
                 feat[:, :, 0:x.size()[2], 0:x.size()[3]] = x[:]
             else:
                 feat = x

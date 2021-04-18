@@ -122,7 +122,7 @@ class Mlp(nn.Module):
 class Embeddings(nn.Module):
     """Construct the embeddings from patch, position embeddings.
     """
-    def __init__(self, config, img_size, in_channels=3):
+    def __init__(self, config, img_size, in_channels=3): #original in_channels = 3
         super(Embeddings, self).__init__()
         self.hybrid = None
         self.config = config
@@ -164,9 +164,13 @@ class Embeddings(nn.Module):
             # print(x.shape)
         else:
             features = None
+        # print("x before batch embedding")
+        # print(x.size())
         x = self.patch_embeddings(x)  # (B, hidden. n_patches^(1/2), n_patches^(1/2))
         # print("x = self.patch_embeddings(x)")
         # print(x.shape)
+        retain_size_2 = x.size()[2]
+        retain_size_3 = x.size()[3]
         x = x.flatten(2)
         # print("x = x.flatten(2)")
         # print(x.shape)
@@ -179,7 +183,7 @@ class Embeddings(nn.Module):
 
         embeddings = x + self.position_embeddings
         embeddings = self.dropout(embeddings)
-        return embeddings, features
+        return embeddings, features,retain_size_2,retain_size_3
 
 
 class Block(nn.Module):
@@ -268,9 +272,9 @@ class Transformer(nn.Module):
         self.encoder = Encoder(config, vis)
 
     def forward(self, input_ids):
-        embedding_output, features = self.embeddings(input_ids)
+        embedding_output, features,bfr_flat_size_2,bfr_flat_size_3 = self.embeddings(input_ids)
         encoded, attn_weights = self.encoder(embedding_output)  # (B, n_patch, hidden)
-        return encoded, attn_weights, features
+        return encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
 
 
 class Conv2dReLU(nn.Sequential):
@@ -375,9 +379,9 @@ class DecoderCup(nn.Module):
         ]
         self.blocks = nn.ModuleList(blocks)
 
-    def forward(self, hidden_states, features=None):
+    def forward(self, hidden_states,bfr_flat_size_2,bfr_flat_size_3, features=None):
         B, n_patch, hidden = hidden_states.size()  # reshape from (B, n_patch, hidden) to (B, h, w, hidden)
-        h, w = int(np.sqrt(n_patch)), int(np.sqrt(n_patch))
+        h, w = bfr_flat_size_2,bfr_flat_size_3
         x = hidden_states.permute(0, 2, 1)
         x = x.contiguous().view(B, hidden, h, w)
         x = self.conv_more(x)
@@ -407,11 +411,12 @@ class VisionTransformer(nn.Module):
 
     def forward(self, x):
         if x.size()[1] == 1:
-            x = x.repeat(1,3,1,1)# new size of x = 1 x 3 x 1 x 1 x orignal size of x
-        x, attn_weights, features = self.transformer(x)  # (B, n_patch, hidden)
+            #if x size was 2x2 then the output of the repeat(1,3,1,1) is 1x3x2x2
+            x = x.repeat(1,3,1,1)# 1st size of x is repeated by 1, 2nd size of x is repeated by 3, 3rd and 4th size of x is repeated by 1
+        x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
         # print("x in vision transformer")
         # print(x.size())
-        x = self.decoder(x, features)
+        x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
         logits = self.segmentation_head(x)
         return logits
 
@@ -454,7 +459,7 @@ class VisionTransformer(nn.Module):
                     unit.load_from(weights, n_block=uname)
 
             if self.transformer.embeddings.hybrid:
-                self.transformer.embeddings.hybrid_model.root.conv.weight.copy_(np2th(res_weight["conv_root/kernel"], conv=True))
+                # self.transformer.embeddings.hybrid_model.root.conv.weight.copy_(np2th(res_weight["conv_root/kernel"], conv=True))
                 gn_weight = np2th(res_weight["gn_root/scale"]).view(-1)
                 gn_bias = np2th(res_weight["gn_root/bias"]).view(-1)
                 self.transformer.embeddings.hybrid_model.root.gn.weight.copy_(gn_weight)
