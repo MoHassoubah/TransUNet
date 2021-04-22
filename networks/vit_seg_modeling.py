@@ -131,7 +131,7 @@ class Embeddings(nn.Module):
         if config.patches.get("grid") is not None:   # ResNet
             grid_size = config.patches["grid"]
             #seems most of the time the patch_size=1
-            patch_size = (img_size[0] // 16 // grid_size[0], img_size[1] // 16 // grid_size[1])# img_size / 16 would be the size of the image after the resnet 
+            patch_size = (img_size[0] // 16 // grid_size[0], img_size[1] // 16 // grid_size[1])# (img_size / 16) would be the size of the image after the resnet 
             # print("patch_size")
             # print(patch_size)
             # print("grid_size")
