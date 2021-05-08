@@ -185,6 +185,30 @@ learning_ignore: # Ignore classes
   18: False    # "pole"
   19: False    # "traffic-sign"
 split: # sequence numbers
+  pretrain:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 20
+    - 21
+  prevalid:
+    - 8
+    - 19
   train:
     - 0
     - 1

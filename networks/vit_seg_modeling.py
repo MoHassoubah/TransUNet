@@ -68,7 +68,7 @@ class Attention(nn.Module):
     def transpose_for_scores(self, x):
         new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
         x = x.view(*new_x_shape)
-        return x.permute(0, 2, 1, 3)
+        return x.permute(0, 2, 1, 3) #batch size x num_attention_heads x num_patches x attention_head_size-->every attentioin head has part of info from the hidden size for each patch 
 
     def forward(self, hidden_states):
         mixed_query_layer = self.query(hidden_states)
@@ -79,7 +79,7 @@ class Attention(nn.Module):
         key_layer = self.transpose_for_scores(mixed_key_layer)
         value_layer = self.transpose_for_scores(mixed_value_layer)
 
-        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2)) # output last 2 dimension num_patches x num_patches
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
         attention_probs = self.softmax(attention_scores)
         weights = attention_probs if self.vis else None
@@ -122,11 +122,19 @@ class Mlp(nn.Module):
 class Embeddings(nn.Module):
     """Construct the embeddings from patch, position embeddings.
     """
-    def __init__(self, config, img_size, in_channels=3): #original in_channels = 3
+    def __init__(self, config, img_size, in_channels=3,pretrain=False): #original in_channels = 3
         super(Embeddings, self).__init__()
         self.hybrid = None
+        self.pretrain=pretrain
         self.config = config
         img_size = _pair(img_size)
+        self.num_tokens = 0
+        
+        if self.pretrain:
+            self.num_tokens = 3
+            self.rot_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))###>
+            self.rot_axis_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))###>
+            self.contrastive_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))###>
 
         if config.patches.get("grid") is not None:   # ResNet
             grid_size = config.patches["grid"]
@@ -151,7 +159,7 @@ class Embeddings(nn.Module):
                                        out_channels=config.hidden_size,
                                        kernel_size=patch_size,
                                        stride=patch_size)#output size =img_size[0] after resnet / patch_size[0] = n_patches^(1/2)
-        self.position_embeddings = nn.Parameter(torch.zeros(1, n_patches, config.hidden_size))
+        self.position_embeddings = nn.Parameter(torch.zeros(1, n_patches + self.num_tokens, config.hidden_size))
 
         self.dropout = Dropout(config.transformer["dropout_rate"])
 
@@ -180,6 +188,13 @@ class Embeddings(nn.Module):
         
         # print(" self.position_embeddings")
         # print( self.position_embeddings.shape)
+        
+        if self.pretrain:
+            B=x.shape[0]
+            rot_token = self.rot_token.expand(B, -1, -1) 
+            rot_axis_token = self.rot_axis_token.expand(B, -1, -1) 
+            contrastive_token = self.contrastive_token.expand(B, -1, -1) 
+            x = torch.cat((rot_token, rot_axis_token,contrastive_token, x), dim=1) ###>
 
         embeddings = x + self.position_embeddings
         embeddings = self.dropout(embeddings)
@@ -246,14 +261,24 @@ class Block(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, config, vis):
+    def __init__(self, config, vis, pretrain=False):
         super(Encoder, self).__init__()
         self.vis = vis
+        self.pretrain = pretrain
         self.layer = nn.ModuleList()
         self.encoder_norm = LayerNorm(config.hidden_size, eps=1e-6)
+        
         for _ in range(config.transformer["num_layers"]):
             layer = Block(config, vis)
             self.layer.append(copy.deepcopy(layer))
+            
+        
+        if self.pretrain:
+            self.sigmd = nn.Sigmoid()
+            self.rot_head = nn.Linear(config.hidden_size, 1) ###>
+            self.rot_axis_head = nn.Linear(config.hidden_size, 1) ###>
+            self.contrastive_head = nn.Linear(config.hidden_size, 512) ###>
+            
 
     def forward(self, hidden_states):
         attn_weights = []
@@ -262,18 +287,33 @@ class Encoder(nn.Module):
             if self.vis:
                 attn_weights.append(weights)
         encoded = self.encoder_norm(hidden_states)
+        if self.pretrain:
+            x_rot = self.sigmd(self.rot_head(encoded[:, 0]))
+            x_rot_axis = self.sigmd(self.rot_axis_head(encoded[:, 1]))
+            x_contrastive = self.contrastive_head(encoded[:, 2])###>
+            
+            return x_rot, x_rot_axis, x_contrastive, encoded[:, 3:], attn_weights
+            
         return encoded, attn_weights
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis):
+    def __init__(self, config, img_size, vis,pretrain=False):
         super(Transformer, self).__init__()
-        self.embeddings = Embeddings(config, img_size=img_size)
-        self.encoder = Encoder(config, vis)
+        self.pretrain = pretrain
+            
+        self.embeddings = Embeddings(config, img_size=img_size,pretrain)
+        self.encoder = Encoder(config, vis,pretrain)
 
     def forward(self, input_ids):
         embedding_output, features,bfr_flat_size_2,bfr_flat_size_3 = self.embeddings(input_ids)
+        # hybrid_output = embedding_output
+        if self.pretrain:
+            x_rot, x_rot_axis, x_contrastive, encoded, attn_weights = self.encoder(embedding_output)
+            return x_rot, x_rot_axis, x_contrastive, encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
+            
         encoded, attn_weights = self.encoder(embedding_output)  # (B, n_patch, hidden)
+        # encoded =  torch.cat([encoded , hybrid_output], dim=2)
         return encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
 
 
@@ -356,7 +396,7 @@ class DecoderCup(nn.Module):
         self.config = config
         head_channels = 512
         self.conv_more = Conv2dReLU(
-            config.hidden_size,
+            config.hidden_size*2,
             head_channels,
             kernel_size=3,
             padding=1,
@@ -395,30 +435,52 @@ class DecoderCup(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False):
+    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, pretrain=False):
         super(VisionTransformer, self).__init__()
+        self.pretrain = pretrain
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
-        self.transformer = Transformer(config, img_size, vis)
+        self.transformer = Transformer(config, img_size, vis,pretrain)
         self.decoder = DecoderCup(config)
-        self.segmentation_head = SegmentationHead(
-            in_channels=config['decoder_channels'][-1],
-            out_channels=config['n_classes'],
-            kernel_size=3,
-        )
+        if pretrain:
+            self.recon_head = SegmentationHead(
+                in_channels=config['decoder_channels'][-1],
+                out_channels=5, #range,x,y,z,remission
+                kernel_size=3,
+            )
+            
+            # create learnable parameters for the MTL task
+            self.rot_w = nn.Parameter(torch.tensor([1.0]))###>
+            self.rot_axis_w = nn.Parameter(torch.tensor([1.0]))###>
+            self.contrastive_w = nn.Parameter(torch.tensor([1.0]))###>
+            self.recons_w = nn.Parameter(torch.tensor([1.0]))###>
+        else:
+            self.segmentation_head = SegmentationHead(
+                in_channels=config['decoder_channels'][-1],
+                out_channels=config['n_classes'],
+                kernel_size=3,
+                )
         self.config = config
 
     def forward(self, x):
         if x.size()[1] == 1:
             #if x size was 2x2 then the output of the repeat(1,3,1,1) is 1x3x2x2
             x = x.repeat(1,3,1,1)# 1st size of x is repeated by 1, 2nd size of x is repeated by 3, 3rd and 4th size of x is repeated by 1
-        x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
+            
+        if self.pretrain:
+            x_rot, x_rot_axis, x_contrastive, x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
+        else:
+            x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
         # print("x in vision transformer")
         # print(x.size())
         x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
-        logits = self.segmentation_head(x)
-        return logits
+        if self.pretrain:
+            logits = self.recon_head(x)
+            return x_rot, x_rot_axis, x_contrastive, logits, self.rot_w, self.rot_axis_w, self.contrastive_w, self.recons_w
+        else:
+            logits = self.segmentation_head(x)
+            return logits
 
     def load_from(self, weights):
         with torch.no_grad():

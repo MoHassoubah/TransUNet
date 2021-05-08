@@ -45,6 +45,8 @@ parser.add_argument('--vit_name', type=str,
                     default='R50-ViT-B_16', help='select one vit model')
 parser.add_argument('--vit_patches_size', type=int,
                     default=16, help='vit_patches_size, default is 16')
+
+parser.add_argument('--pretrain', action='store_true', default=False, help='Enabling pretraining')
 parser.add_argument(
   '--data_kitti_cfg', '-dck',
   type=str,
@@ -131,11 +133,19 @@ if __name__ == "__main__":
     snapshot_path = snapshot_path + '_'+ str(args.img_size[0])+'x'+str(args.img_size[1])
     snapshot_path = snapshot_path + '_s'+str(args.seed) if args.seed!=1234 else snapshot_path
     
-    
+    if args.pretrain:
+        training_sequences = DATA_kitti["split"]["pretrain"] #using labeled and unlabled data
+        validation_sequences = DATA_kitti["split"]["prevalid"]
+        gt=False
+    else:
+        training_sequences = DATA_kitti["split"]["train"]
+        validation_sequences = DATA_kitti["split"]["valid"]
+        gt= True
+        
     
     kitti_parser = Parser(root=args.root_path,
-                          train_sequences=DATA_kitti["split"]["train"],
-                          valid_sequences=DATA_kitti["split"]["valid"],
+                          train_sequences=training_sequences,
+                          valid_sequences=validation_sequences,
                           test_sequences=None,
                           labels=DATA_kitti["labels"],
                           color_map=DATA_kitti["color_map"],
@@ -146,9 +156,10 @@ if __name__ == "__main__":
                           batch_size=args.batch_size,
                           workers=ARCH["train"]["workers"],
                           max_iters=None,
-                          gt=True,
+                          gt=gt,
                           shuffle_train=True,
-                          nuscenes_dataset=False)
+                          nuscenes_dataset=False,
+                          pretrain=args.pretrain)
                           
     args.num_classes = kitti_parser.get_n_classes()
 
@@ -159,8 +170,9 @@ if __name__ == "__main__":
     config_vit.n_skip = args.n_skip
     if args.vit_name.find('R50') != -1:
         config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
-    net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes).cuda()
-    net.load_from(weights=np.load(config_vit.pretrained_path))
+    net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain).cuda()
+    if not args.pretrain:
+        net.load_from(weights=np.load(config_vit.pretrained_path))
 
     trainer = {'Kitti': trainer_kitti,}
     

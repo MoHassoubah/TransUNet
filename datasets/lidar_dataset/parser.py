@@ -34,9 +34,11 @@ class SemanticKitti(Dataset):
                max_iters=None,# maximum number of training itirations
                max_points=150000,   # max number of points present in dataset
                gt=True,            # send ground truth?
-               nuscenes_dataset=False):         # nuscebes dataset?
+               nuscenes_dataset=False,         # nuscebes dataset?
+               pretrain=False):                 # use pretraining flag
     # save deats
     self.root = root #os.path.join(root, "sequences") #root
+    self.pretrain = pretrain
     self.sequences = sequences
     self.labels = labels
     self.color_map = color_map
@@ -168,36 +170,48 @@ class SemanticKitti(Dataset):
                           W=self.sensor_img_W,
                           fov_up=self.sensor_fov_up,
                           fov_down=self.sensor_fov_down,
-                          nuscenes_dataset=self.nuscenes_dataset)
+                          nuscenes_dataset=self.nuscenes_dataset,
+                          pretrain= self.pretrain)
     else:
       scan = LaserScan(project=True,
                        H=self.sensor_img_H,
                        W=self.sensor_img_W,
                        fov_up=self.sensor_fov_up,
                        fov_down=self.sensor_fov_down,
-                       nuscenes_dataset=self.nuscenes_dataset)
-
+                       nuscenes_dataset=self.nuscenes_dataset,
+                       pretrain= self.pretrain)
+                       
     # open and obtain scan
     scan.open_scan(scan_file)
+    
     if self.gt:
       scan.open_label(label_file)
       # map unused classes to used classes (also for projection)
-      scan.sem_label = self.map(scan.sem_label, self.learning_map)
       scan.proj_sem_label = self.map(scan.proj_sem_label, self.learning_map)
 
-    # make a tensor of the uncompressed data (with the max num points)
-    unproj_n_points = scan.points.shape[0]
-    unproj_xyz = torch.full((self.max_points, 3), -1.0, dtype=torch.float)
-    unproj_xyz[:unproj_n_points] = torch.from_numpy(scan.points)
-    unproj_range = torch.full([self.max_points], -1.0, dtype=torch.float)
-    unproj_range[:unproj_n_points] = torch.from_numpy(scan.unproj_range)
-    unproj_remissions = torch.full([self.max_points], -1.0, dtype=torch.float)
-    unproj_remissions[:unproj_n_points] = torch.from_numpy(scan.remissions)
-    if self.gt:
-      unproj_labels = torch.full([self.max_points], -1.0, dtype=torch.int32)
-      unproj_labels[:unproj_n_points] = torch.from_numpy(scan.sem_label)
-    else:
-      unproj_labels = []
+    
+    if not self.pretrain:
+        if self.gt:
+          # map unused classes to used classes (also for projection)
+          scan.sem_label = self.map(scan.sem_label, self.learning_map)
+        # make a tensor of the uncompressed data (with the max num points)
+        unproj_n_points = scan.points.shape[0]
+        unproj_xyz = torch.full((self.max_points, 3), -1.0, dtype=torch.float)
+        unproj_xyz[:unproj_n_points] = torch.from_numpy(scan.points)
+        unproj_range = torch.full([self.max_points], -1.0, dtype=torch.float)
+        unproj_range[:unproj_n_points] = torch.from_numpy(scan.unproj_range)
+        unproj_remissions = torch.full([self.max_points], -1.0, dtype=torch.float)
+        unproj_remissions[:unproj_n_points] = torch.from_numpy(scan.remissions)
+        if self.gt:
+          unproj_labels = torch.full([self.max_points], -1.0, dtype=torch.int32)
+          unproj_labels[:unproj_n_points] = torch.from_numpy(scan.sem_label)
+        else:
+          unproj_labels = []
+        
+        proj_x = torch.full([self.max_points], -1, dtype=torch.long)
+        proj_x[:unproj_n_points] = torch.from_numpy(scan.proj_x)
+        proj_y = torch.full([self.max_points], -1, dtype=torch.long)
+        proj_y[:unproj_n_points] = torch.from_numpy(scan.proj_y)
 
     # get points and labels
     proj_range = torch.from_numpy(scan.proj_range).clone()
@@ -209,16 +223,84 @@ class SemanticKitti(Dataset):
       proj_labels = proj_labels * proj_mask
     else:
       proj_labels = []
-    proj_x = torch.full([self.max_points], -1, dtype=torch.long)
-    proj_x[:unproj_n_points] = torch.from_numpy(scan.proj_x)
-    proj_y = torch.full([self.max_points], -1, dtype=torch.long)
-    proj_y[:unproj_n_points] = torch.from_numpy(scan.proj_y)
+      
+        
     proj = torch.cat([proj_range.unsqueeze(0).clone(),
                       proj_xyz.clone().permute(2, 0, 1),
                       proj_remission.unsqueeze(0).clone()]) # TO create 4 channels image each channel carry sort of data (range,x,y,z,remission)
     proj = (proj - self.sensor_img_means[:, None, None]
             ) / self.sensor_img_stds[:, None, None]
     proj = proj * proj_mask.float()
+    
+    if self.pretrain:
+        # get points and labels
+        reduced_proj_range = torch.from_numpy(scan.reduced_proj_range.clone()
+        reduced_proj_xyz = torch.from_numpy(scan.reduced_proj_xyz).clone()
+        reduced_proj_remission = torch.from_numpy(scan.reduced_proj_remission).clone()
+        reduced_proj_mask = torch.from_numpy(scan.reduced_proj_mask)
+          
+            
+        reduced_proj = torch.cat([reduced_proj_range.unsqueeze(0).clone(),
+                          reduced_proj_xyz.clone().permute(2, 0, 1),
+                          reduced_proj_remission.unsqueeze(0).clone()]) # TO create 4 channels image each channel carry sort of data (range,x,y,z,remission)
+        reduced_proj = (reduced_proj - self.sensor_img_means[:, None, None]
+                ) / self.sensor_img_stds[:, None, None]
+        reduced_proj = reduced_proj * reduced_proj_mask.float()
+        
+        
+    ################################
+    ### SCAN 2
+    ################################    
+    # open a semantic laserscan
+    if self.pretrain:  
+        if self.gt:
+          scan_2 = SemLaserScan(self.color_map,
+                                  project=True,
+                                  H=self.sensor_img_H,
+                                  W=self.sensor_img_W,
+                                  fov_up=self.sensor_fov_up,
+                                  fov_down=self.sensor_fov_down,
+                                  nuscenes_dataset=self.nuscenes_dataset,
+                                  pretrain= self.pretrain)
+        else:               
+          scan_2 = LaserScan(project=True,
+                               H=self.sensor_img_H,
+                               W=self.sensor_img_W,
+                               fov_up=self.sensor_fov_up,
+                               fov_down=self.sensor_fov_down,
+                               nuscenes_dataset=self.nuscenes_dataset,
+                               pretrain= self.pretrain)
+        
+        scan_2.set_points(scan.points, scan.remissions)#same point cloud
+        
+        
+        # get points and labels
+        proj_range_2 = torch.from_numpy(scan_2.proj_range).clone()
+        proj_xyz_2 = torch.from_numpy(scan_2.proj_xyz).clone()
+        proj_remission_2 = torch.from_numpy(scan_2.proj_remission).clone()
+        proj_mask_2 = torch.from_numpy(scan_2.proj_mask)
+                  
+            
+        proj_2 = torch.cat([proj_range_2.unsqueeze(0).clone(),
+                          proj_xyz_2.clone().permute(2, 0, 1),
+                          proj_remission_2.unsqueeze(0).clone()]) # TO create 4 channels image each channel carry sort of data (range,x,y,z,remission)
+        proj_2 = (proj_2 - self.sensor_img_means[:, None, None]
+                ) / self.sensor_img_stds[:, None, None]
+        proj_2 = proj_2 * proj_mask_2.float()
+        
+        # get points and labels
+        reduced_proj_range_2 = torch.from_numpy(scan_2.reduced_proj_range.clone()
+        reduced_proj_xyz_2 = torch.from_numpy(scan_2.reduced_proj_xyz).clone()
+        reduced_proj_remission_2 = torch.from_numpy(scan_2.reduced_proj_remission).clone()
+        reduced_proj_mask_2 = torch.from_numpy(scan_2.reduced_proj_mask)
+          
+            
+        reduced_proj_2 = torch.cat([reduced_proj_range_2.unsqueeze(0).clone(),
+                          reduced_proj_xyz_2.clone().permute(2, 0, 1),
+                          reduced_proj_remission_2.unsqueeze(0).clone()]) # TO create 4 channels image each channel carry sort of data (range,x,y,z,remission)
+        reduced_proj_2 = (reduced_proj_2 - self.sensor_img_means[:, None, None]
+                ) / self.sensor_img_stds[:, None, None]
+        reduced_proj_2 = reduced_proj_2 * reduced_proj_mask_2.float()
 
     # get name and sequence
     path_norm = os.path.normpath(scan_file)
@@ -230,8 +312,14 @@ class SemanticKitti(Dataset):
     # print("path_name", path_name)
 
     # return
-    return proj, proj_mask, proj_labels, unproj_labels, path_seq, path_name, proj_x, proj_y, proj_range, unproj_range, proj_xyz, unproj_xyz, proj_remission, unproj_remissions, unproj_n_points
-
+    if not self.pretrain:
+        return proj, proj_mask, proj_labels, unproj_labels, path_seq, path_name, proj_x, proj_y, proj_range, unproj_range, proj_xyz, unproj_xyz, proj_remission, unproj_remissions, unproj_n_points
+    else:
+        return proj, proj_mask, reduced_proj, reduced_proj_mask, scan.rot_ang_0_is_0_180_is_1, \
+        scan.rot_x_is_0_y_is_1, proj_2, proj_mask_2, reduced_proj_2, reduced_proj_mask_2,\
+        scan_2.rot_ang_0_is_0_180_is_1, scan_2.rot_x_is_0_y_is_1, path_seq, path_name
+        
+        
   def __len__(self):
     return len(self.files)
 
@@ -280,7 +368,8 @@ class Parser():
                max_iters=None,                  # maximum number of training itirations
                gt=True,                         # get gt?
                shuffle_train=True,              # shuffle training set?
-               nuscenes_dataset=False):         # nuscebes dataset?
+               nuscenes_dataset=False,          # nuscebes dataset?
+               pretrain=False):                 # use pretraining flag
                
     super(Parser, self).__init__()
 
@@ -298,6 +387,7 @@ class Parser():
     self.max_points = max_points
     self.batch_size = batch_size
     self.workers = workers
+    self.pretrain = pretrain
     self.gt = gt
     self.shuffle_train = shuffle_train
     self.nuscenes_dataset = nuscenes_dataset
@@ -317,7 +407,8 @@ class Parser():
                                            max_iters=self.max_iters,
                                            max_points=max_points,
                                            gt=self.gt,
-                                           nuscenes_dataset=self.nuscenes_dataset)
+                                           nuscenes_dataset=self.nuscenes_dataset,
+                                           pretrain=self.pretrain)
 
         self.trainloader = torch.utils.data.DataLoader(self.train_dataset,
                                                        batch_size=self.batch_size,
@@ -339,7 +430,8 @@ class Parser():
                                        sensor=self.sensor,
                                        max_points=max_points,
                                        gt=self.gt,
-                                       nuscenes_dataset=self.nuscenes_dataset)
+                                       nuscenes_dataset=self.nuscenes_dataset,
+                                       pretrain=self.pretrain)
 
       self.validloader = torch.utils.data.DataLoader(self.valid_dataset,
                                                    batch_size=self.batch_size,

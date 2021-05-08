@@ -21,6 +21,8 @@ from matplotlib import pyplot as plt
 from avgmeter import *
 from ioueval import *
 import os, shutil
+
+from losses import MTL_loss
         
 def trainer_kitti(args, model, snapshot_path, parser):
     from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
@@ -67,6 +69,13 @@ def trainer_kitti(args, model, snapshot_path, parser):
             # print('Failed to delete %s. Reason: %s' % (file_path, e))
     #######################
     
+    
+    ######################
+    ######################
+    if args.pretrain:
+        criterion = MTL_loss(device, args.batch_size)
+    ######################
+    
     if args.n_gpu > 1:
         model = nn.DataParallel(model)
     ce_loss = torch.nn.CrossEntropyLoss(ignore_index=255)
@@ -84,13 +93,67 @@ def trainer_kitti(args, model, snapshot_path, parser):
         
         iou = AverageMeter()
         
-        for i_batch, (image_batch, proj_mask, label_batch, _, path_seq, path_name, _, _, _, _, _, _, _, _, _) in enumerate(trainloader):
-            image_batch, label_batch = image_batch.cuda(), label_batch.cuda(non_blocking=True).long()
-            outputs = model(image_batch)
+        for i_batch, batch_data in enumerate(trainloader):
+        
+            if args.pretrain:
+                (image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, \
+                rot_ang_0_is_0_180_is_1_batch, rot_x_is_0_y_is_1_batch, image_batch_2, proj_mask_2, reduced_image_batch_2,\
+                reduced_proj_mask_2, rot_ang_0_is_0_180_is_1_batch_2, rot_x_is_0_y_is_1_batch_2,path_seq, path_name) =  batch_data
             
-            loss_ce = ce_loss(outputs, label_batch)
-            # loss_dice = dice_loss(outputs, label_batch, softmax=True)
-            loss = loss_ce 
+                image_batch = image_batch.to(device, non_blocking=True)
+                reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
+                rot_x_is_0_y_is_1_batch = rot_x_is_0_y_is_1_batch.to(device, non_blocking=True)
+                rot_ang_0_is_0_180_is_1_batch = rot_ang_0_is_0_180_is_1_batch.to(device, non_blocking=True)
+                
+                
+                image_batch_2 = image_batch_2.to(device, non_blocking=True)
+                reduced_image_batch_2 = reduced_image_batch_2.to(device, non_blocking=True) # Apply distortion
+                rot_x_is_0_y_is_1_batch_2 = rot_x_is_0_y_is_1_batch_2.to(device, non_blocking=True)
+                rot_ang_0_is_0_180_is_1_batch_2 = rot_ang_0_is_0_180_is_1_batch_2.to(device, non_blocking=True)
+                
+                with torch.cuda.amp.autocast():
+                
+                    rot_prd,rot_axis_prd, contrastive_prd, recon_prd, rot_w, rot_axis_w, contrastive_w, recons_w = model(reduced_image_batch)
+                    rot_prd_2,rot_axis_prd_2, contrastive_prd_2, recon_prd_2, _, _, _, _                         = model(reduced_image_batch_2)
+                        
+                    rot_p = torch.cat([rot_prd, rot_prd_2], dim=0) 
+                    rots = torch.cat([rot_ang_0_is_0_180_is_1_batch, rot_ang_0_is_0_180_is_1_batch_2], dim=0) 
+                    
+                    rot_axis_p = torch.cat([rot_axis_prd, rot_axis_prd_2], dim=0) 
+                    rots_axis = torch.cat([rot_x_is_0_y_is_1_batch, rot_x_is_0_y_is_1_batch_2], dim=0) 
+                    
+                    imgs_recon = torch.cat([recon_prd, recon_prd_2], dim=0) 
+                    imgs = torch.cat([image_batch, image_batch_2], dim=0) 
+                    
+                    loss, (loss1, loss2, loss3, loss4) = criterion(rot_p, rots, 
+                                                                rot_axis_p, rots_axis,
+                                                                contrastive_prd, contrastive_prd_2, 
+                                                                imgs_recon, imgs, rot_w, rot_axis_w, contrastive_w, recons_w )
+                    
+                writer.add_scalar('info/loss_rotation', loss1, iter_num)
+                writer.add_scalar('info/loss_rot_axis', loss2, iter_num)
+                writer.add_scalar('info/loss_contrastive', loss3, iter_num)
+                writer.add_scalar('info/loss_reconstruction', loss4, iter_num)
+            else:
+                (image_batch, proj_mask, label_batch, _, path_seq, path_name, _, _, _, _, _, _, _, _, _) = batch_data
+                
+                image_batch, label_batch = image_batch.cuda(), label_batch.cuda(non_blocking=True).long()
+                outputs = model(image_batch)
+            
+                loss_ce = ce_loss(outputs, label_batch)
+                # loss_dice = dice_loss(outputs, label_batch, softmax=True)
+                loss = loss_ce 
+                
+                ###########################
+                
+                with torch.no_grad():
+                    evaluator.reset() # we do this for the training as each weights of the model differ each iteration 
+                    argmax = outputs.argmax(dim=1)
+                    evaluator.addBatch(argmax, label_batch)
+                    jaccard, class_jaccard = evaluator.getIoU()
+                iou.update(jaccard.item(), args.batch_size)
+                ###########################
+                
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -98,19 +161,10 @@ def trainer_kitti(args, model, snapshot_path, parser):
             for param_group in optimizer.param_groups:
                 param_group['lr'] = lr_
                 
-            ###########################
-            
-            with torch.no_grad():
-                evaluator.reset() # we do this for the training as each weights of the model differ each iteration 
-                argmax = outputs.argmax(dim=1)
-                evaluator.addBatch(argmax, label_batch)
-                jaccard, class_jaccard = evaluator.getIoU()
-            iou.update(jaccard.item(), args.batch_size)
-            ###########################
 
             iter_num = iter_num + 1
             writer.add_scalar('info/lr', lr_, iter_num)
-            writer.add_scalar('info/loss_ce', loss_ce, iter_num)
+            writer.add_scalar('info/loss', loss, iter_num)
 
             logging.info('iteration %d : loss : %f, loss_ce: %f' % (iter_num, loss.item(), loss_ce.item()))
 
@@ -123,8 +177,8 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 # labs = label_batch[1, ...].unsqueeze(0) * 50
                 # writer.add_image('train/GroundTruth', labs, iter_num)
                 
-
-        writer.add_scalar('train/iou', iou.avg, epoch_num)
+        if not args.pretrain:
+            writer.add_scalar('train/iou', iou.avg, epoch_num)
                 
                 
         ##############################################
@@ -138,27 +192,73 @@ def trainer_kitti(args, model, snapshot_path, parser):
             model.eval()
             with torch.no_grad():
                 
-                for index, (image_batch, proj_mask, label_batch, _, path_seq, path_name, _, _, _, _, _, _, _, _, _) in enumerate(valid_loader):
+                for index, batch_data in enumerate(valid_loader):
                     if index % 100 == 0:
                         print('%d validation iter processd' % index)
-                                        
-                    image_batch, label_batch = image_batch.cuda(), label_batch.cuda(non_blocking=True).long()
-                    outputs = model(image_batch)
+                        
+                    if args.pretrain:
+                        (image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, \
+                        rot_ang_0_is_0_180_is_1_batch, rot_x_is_0_y_is_1_batch, image_batch_2, proj_mask_2, reduced_image_batch_2,\
+                        reduced_proj_mask_2, rot_ang_0_is_0_180_is_1_batch_2, rot_x_is_0_y_is_1_batch_2,path_seq, path_name) =  batch_data
                     
-                    loss_ce = ce_loss(outputs, label_batch)
+                        image_batch = image_batch.to(device, non_blocking=True)
+                        reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
+                        rot_x_is_0_y_is_1_batch = rot_x_is_0_y_is_1_batch.to(device, non_blocking=True)
+                        rot_ang_0_is_0_180_is_1_batch = rot_ang_0_is_0_180_is_1_batch.to(device, non_blocking=True)
+                        
+                        
+                        image_batch_2 = image_batch_2.to(device, non_blocking=True)
+                        reduced_image_batch_2 = reduced_image_batch_2.to(device, non_blocking=True) # Apply distortion
+                        rot_x_is_0_y_is_1_batch_2 = rot_x_is_0_y_is_1_batch_2.to(device, non_blocking=True)
+                        rot_ang_0_is_0_180_is_1_batch_2 = rot_ang_0_is_0_180_is_1_batch_2.to(device, non_blocking=True)
+                        
+                        with torch.cuda.amp.autocast():
+                        
+                            rot_prd,rot_axis_prd, contrastive_prd, recon_prd, rot_w, rot_axis_w, contrastive_w, recons_w = model(reduced_image_batch)
+                            rot_prd_2,rot_axis_prd_2, contrastive_prd_2, recon_prd_2, _, _, _, _                         = model(reduced_image_batch_2)
+                                
+                            rot_p = torch.cat([rot_prd, rot_prd_2], dim=0) 
+                            rots = torch.cat([rot_ang_0_is_0_180_is_1_batch, rot_ang_0_is_0_180_is_1_batch_2], dim=0) 
+                            
+                            rot_axis_p = torch.cat([rot_axis_prd, rot_axis_prd_2], dim=0) 
+                            rots_axis = torch.cat([rot_x_is_0_y_is_1_batch, rot_x_is_0_y_is_1_batch_2], dim=0) 
+                            
+                            imgs_recon = torch.cat([recon_prd, recon_prd_2], dim=0) 
+                            imgs = torch.cat([image_batch, image_batch_2], dim=0) 
+                            
+                            loss, (loss1, loss2, loss3, loss4) = criterion(rot_p, rots, 
+                                                                        rot_axis_p, rots_axis,
+                                                                        contrastive_prd, contrastive_prd_2, 
+                                                                        imgs_recon, imgs, rot_w, rot_axis_w, contrastive_w, recons_w )
+                                                                        
+                        val_losses.update(loss.mean().item(), args.batch_size)
+                            
+                        writer.add_scalar('info/loss_rotation', loss1, iter_num)
+                        writer.add_scalar('info/loss_rot_axis', loss2, iter_num)
+                        writer.add_scalar('info/loss_contrastive', loss3, iter_num)
+                        writer.add_scalar('info/loss_reconstruction', loss4, iter_num)
+                    else:
+                        (image_batch, proj_mask, label_batch, _, path_seq, path_name, _, _, _, _, _, _, _, _, _) =  batch_data               
+                        image_batch, label_batch = image_batch.cuda(), label_batch.cuda(non_blocking=True).long()
+                        outputs = model(image_batch)
+                        
+                        loss_ce = ce_loss(outputs, label_batch)
+                        
+                        
+                        val_losses.update(loss_ce.mean().item(), args.batch_size)
+                        
+                        argmax = outputs.argmax(dim=1)
+                        
+                        evaluator.addBatch(argmax, label_batch)
+                        
+                if not args.pretrain:    
+                    jaccard, class_jaccard = evaluator.getIoU()
                     
-                    
-                    val_losses.update(loss_ce.mean().item(), args.batch_size)
-                    
-                    argmax = outputs.argmax(dim=1)
-                    
-                    evaluator.addBatch(argmax, label_batch)
-                    
-                jaccard, class_jaccard = evaluator.getIoU()
-                
-                iou.update(jaccard.item(), args.batch_size)#in_vol.size(0)) 
+                    iou.update(jaccard.item(), args.batch_size)#in_vol.size(0)) 
 
-            writer.add_scalar('valid/iou', iou.avg, epoch_num)
+            if not args.pretrain: 
+                writer.add_scalar('valid/iou', iou.avg, epoch_num)
+                
             writer.add_scalar('valid/loss', val_losses.avg, epoch_num)
                 
             
@@ -166,8 +266,9 @@ def trainer_kitti(args, model, snapshot_path, parser):
         ##############################################
 
             
-        save_interval = 50  # int(max_epoch/6)
-        if epoch_num > int(max_epoch / 2) and (epoch_num + 1) % save_interval == 0:
+        save_interval = 30  # int(max_epoch/6)
+        # if epoch_num > int(max_epoch / 2) and (epoch_num + 1) % save_interval == 0:
+        if (epoch_num + 1) % save_interval == 0:
             save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
             torch.save(model.state_dict(), save_mode_path)
             logging.info("save model to {}".format(save_mode_path))

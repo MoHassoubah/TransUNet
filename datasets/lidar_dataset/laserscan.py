@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 # This file is covered by the LICENSE file in the root of this project.
 import numpy as np
+from numpy.random import default_rng
 
 
 class LaserScan:
   """Class that contains LaserScan with x,y,z,r"""
   EXTENSIONS_SCAN = ['.bin']
 
-  def __init__(self, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0, nuscenes_dataset=False):
+  def __init__(self, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0, nuscenes_dataset=False, pretrain=False):
     self.project = project
     self.proj_H = H
     self.proj_W = W
     self.proj_fov_up = fov_up
     self.proj_fov_down = fov_down
     self.nuscenes_dataset = nuscenes_dataset
+    self.pretrain = pretrain
     self.reset()
 
   def reset(self):
@@ -24,30 +26,56 @@ class LaserScan:
     # projected range image - [H,W] range (-1 is no data)
     self.proj_range = np.full((self.proj_H, self.proj_W), -1,
                               dtype=np.float32)
-
-    # unprojected range (list of depths for each point)
-    self.unproj_range = np.zeros((0, 1), dtype=np.float32)
+                              
+    
 
     # projected point cloud xyz - [H,W,3] xyz coord (-1 is no data)
     self.proj_xyz = np.full((self.proj_H, self.proj_W, 3), -1,
                             dtype=np.float32)
+                            
 
     # projected remission - [H,W] intensity (-1 is no data)
     self.proj_remission = np.full((self.proj_H, self.proj_W), -1,
                                   dtype=np.float32)
+                                                                    
 
     # projected index (for each pixel, what I am in the pointcloud)
     # [H,W] index (-1 is no data)
     self.proj_idx = np.full((self.proj_H, self.proj_W), -1,
                             dtype=np.int32)
 
-    # for each point, where it is in the range image
-    self.proj_x = np.zeros((0, 1), dtype=np.int32)        # [m, 1]: x
-    self.proj_y = np.zeros((0, 1), dtype=np.int32)        # [m, 1]: y
-
     # mask containing for each pixel, if it contains a point or not
     self.proj_mask = np.zeros((self.proj_H, self.proj_W),
                               dtype=np.int32)       # [H,W] mask
+    
+    
+    ######################################
+    if self.pretrain:
+        self.indicies_remained_aft_drop = np.zeros((0, 1), dtype=np.int32)    # [m ,1]: indicies_remained_aft_drop
+        
+        self.reduced_proj_range = np.full((self.proj_H, self.proj_W), -1,
+                                  dtype=np.float32)
+                                  
+        self.reduced_proj_xyz = np.full((self.proj_H, self.proj_W, 3), -1,
+                                dtype=np.float32)
+                                  
+        self.reduced_proj_remission = np.full((self.proj_H, self.proj_W), -1,
+                                      dtype=np.float32)
+        self.reduced_proj_mask = np.zeros((self.proj_H, self.proj_W),
+                                  dtype=np.int32)       # [H,W] mask
+        self.reduced_proj_idx = np.full((self.proj_H, self.proj_W), -1,
+                                dtype=np.int32)
+                                
+    #######################################
+
+    ### all the next variables changes depending if there is dropping or not
+
+    if(not self.pretrain):
+        # unprojected range (list of depths for each point)
+        self.unproj_range = np.zeros((0, 1), dtype=np.float32)
+        # for each point, where it is in the range image
+        self.proj_x = np.zeros((0, 1), dtype=np.int32)        # [m, 1]: x
+        self.proj_y = np.zeros((0, 1), dtype=np.int32)        # [m, 1]: y
 
   def size(self):
     """ Return the size of the point cloud. """
@@ -112,29 +140,123 @@ class LaserScan:
       self.remissions = remissions  # get remission
     else:
       self.remissions = np.zeros((points.shape[0]), dtype=np.float32)
+      
+    if self.pretrain:
+        aug_points = self.do_cloud_augmentatiion()
+        self.drop_x_percent_frm_pntcloud()
 
     # if projection is wanted, then do it and fill in the structure
     if self.project:
-      self.do_range_projection()
-
-  def do_range_projection(self):
+        if self.pretrain:    
+            proj_y, proj_x, depth, ret_points, ret_remission, indices = self.do_range_projection(param_aug_points = aug_points)
+        else:
+            proj_y, proj_x, depth, ret_points, ret_remission, indices = self.do_range_projection()
+        
+        self.proj_range[proj_y, proj_x] = depth
+        self.proj_xyz[proj_y, proj_x] = ret_points
+        self.proj_remission[proj_y, proj_x] = ret_remission
+        self.proj_idx[proj_y, proj_x] = indices
+        self.proj_mask = (self.proj_idx > 0).astype(np.int32)
+        
+        if self.pretrain:
+            proj_y, proj_x, depth, ret_points, ret_remission, indices = self.do_range_projection(True)
+            
+            self.reduced_proj_range[proj_y, proj_x] = depth
+            self.reduced_proj_xyz[proj_y, proj_x] = ret_points
+            self.reduced_proj_remission[proj_y, proj_x] = ret_remission
+            self.reduced_proj_idx[proj_y, proj_x] = indices
+            self.reduced_proj_mask = (self.reduced_proj_idx > 0).astype(np.int32)
+      
+   
+  def do_translation_augmentation(self):
+    std = 0.2**0.5
+    delta_x = np.random.normal(0,std)
+    aug_points = np.zeros_like(self.points)
+    aug_points[:, 0] = self.points[:, 0] + delta_x
+    delta_y = np.random.normal(0,std)
+    aug_points[:, 1] = self.points[:, 1] + delta_y
+    delta_z = np.random.normal(0,std)
+    aug_points[:, 2] = self.points[:, 2] + delta_z
+    return aug_points
+    
+  def do_random_scaling(self, aug_points):
+    t= 0.05
+    s = np.random.uniform(1.0-t, 1.0+t)
+    
+    aug_points = aug_points * s
+    return aug_points
+    
+  def do_random_flip_x_y_axis(self, aug_points):
+    do_flipping = np.random.choice([0, 1])
+    if do_flipping:
+        x_is_0_y_is_1 = np.random.choice([0, 1])
+        if x_is_0_y_is_1:#flip around y axis
+            aug_points[:, 0] = aug_points[:, 0] * (-1)
+        else:#flip around x axis
+            aug_points[:, 1] = aug_points[:, 1] * (-1)
+            
+    return aug_points
+            
+  def do_random_rotation(self, aug_points):
+    self.rot_ang_0_is_0_180_is_1 = np.random.choice([0, 1])
+    theta = np.radians(self.rot_ang_0_is_0_180_is_1*180)
+    c, s = np.cos(theta), np.sin(theta)
+    self.rot_x_is_0_y_is_1 = np.random.choice([0, 1])
+    if self.rot_x_is_0_y_is_1:
+        #rotate around y axis
+        R = np.array(((c, 0, s), (0,1,0),(-s,0, c)))
+    else:
+        #rotate around x axis
+        R = np.array(((1,0,0), (0,c,-s),(0,s, c)))
+        
+    aug_points = np.matmul(aug_points,R)   
+    return aug_points
+    
+  def do_cloud_augmentatiion(self):
+    aug_points = self.do_translation_augmentation()
+    aug_points = self.do_random_scaling(aug_points)
+    aug_points = self.do_random_flip_x_y_axis(aug_points)
+    aug_points = self.do_random_rotation(aug_points)
+    return aug_points
+    
+  def drop_x_percent_frm_pntcloud(self):
+    dropping_ratio = np.random.uniform(0.25, 0.5)
+    num_pnts = self.points.shape[0]
+    num_dropped_pnts = int(num_pnts*dropping_ratio)
+    rng = default_rng()
+    indcies_dropped_pnt = rng.choice(num_pnts, size=num_dropped_pnts, replace=False)
+    self.indicies_remained_aft_drop =  ~np.isin(np.arange(num_pnts), indcies_dropped_pnt) 
+    
+    
+  def do_range_projection(self, drop_pnts=False,param_aug_points=None):
     """ Project a pointcloud into a spherical projection image.projection.
         Function takes no arguments because it can be also called externally
         if the value of the constructor was not set (in case you change your
         mind about wanting the projection)
     """
+    if self.pretrain:
+        if drop_pnts:
+            pointcloud = param_aug_points[self.indicies_remained_aft_drop]
+            pnt_remission = self.remissions[self.indicies_remained_aft_drop]
+        else:
+            pointcloud = param_aug_points
+            pnt_remission = self.remissions
+    else:
+        pointcloud = self.points
+        pnt_remission = self.remissions
+        
     # laser parameters
     fov_up = self.proj_fov_up / 180.0 * np.pi      # field of view up in rad
     fov_down = self.proj_fov_down / 180.0 * np.pi  # field of view down in rad
     fov = abs(fov_down) + abs(fov_up)  # get field of view total in rad
 
     # get depth of all points
-    depth = np.linalg.norm(self.points, 2, axis=1)
+    depth = np.linalg.norm(pointcloud, 2, axis=1)
 
     # get scan components
-    scan_x = self.points[:, 0]
-    scan_y = self.points[:, 1]
-    scan_z = self.points[:, 2]
+    scan_x = pointcloud[:, 0]
+    scan_y = pointcloud[:, 1]
+    scan_z = pointcloud[:, 2]
 
     # get angles of all points
     yaw = -np.arctan2(scan_y, scan_x)
@@ -147,45 +269,45 @@ class LaserScan:
     # scale to image size using angular resolution
     proj_x *= self.proj_W                              # in [0.0, W]
     proj_y *= self.proj_H                              # in [0.0, H]
+    
+    if not self.pretrain:
+        # copy of depth in original order
+        self.unproj_range = np.copy(depth)
 
+    #proj_x/y are the indicies of the available points in the 2d domain
     # round and clamp for use as index
     proj_x = np.floor(proj_x)
     proj_x = np.minimum(self.proj_W - 1, proj_x)
     proj_x = np.maximum(0, proj_x).astype(np.int32)   # in [0,W-1]
-    self.proj_x = np.copy(proj_x)  # store a copy in orig order
+    if not self.pretrain:
+        self.proj_x = np.copy(proj_x)  # store a copy in orig order
 
     proj_y = np.floor(proj_y)
     proj_y = np.minimum(self.proj_H - 1, proj_y)
     proj_y = np.maximum(0, proj_y).astype(np.int32)   # in [0,H-1]
-    self.proj_y = np.copy(proj_y)  # stope a copy in original order
-
-    # copy of depth in original order
-    self.unproj_range = np.copy(depth)
+    if not self.pretrain:
+        self.proj_y = np.copy(proj_y)  # stope a copy in original order
 
     # order in decreasing depth
     indices = np.arange(depth.shape[0])
     order = np.argsort(depth)[::-1]
     depth = depth[order]
     indices = indices[order]
-    points = self.points[order]
-    remission = self.remissions[order]
+    points = pointcloud[order]
+    remission = pnt_remission[order]
     proj_y = proj_y[order]
     proj_x = proj_x[order]
 
-    # assing to images
-    self.proj_range[proj_y, proj_x] = depth
-    self.proj_xyz[proj_y, proj_x] = points
-    self.proj_remission[proj_y, proj_x] = remission
-    self.proj_idx[proj_y, proj_x] = indices
-    self.proj_mask = (self.proj_idx > 0).astype(np.int32)
+    
+    return proj_y, proj_x, depth, points, remission, indices
 
 
 class SemLaserScan(LaserScan):
   """Class that contains LaserScan with x,y,z,r,sem_label,sem_color_label,inst_label,inst_color_label"""
   EXTENSIONS_LABEL = ['.label']
 
-  def __init__(self,  sem_color_dict=None, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0, nuscenes_dataset=False, max_classes=300):
-    super(SemLaserScan, self).__init__(project, H, W, fov_up, fov_down, nuscenes_dataset)
+  def __init__(self,  sem_color_dict=None, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0, nuscenes_dataset=False, max_classes=300, pretrain=False):
+    super(SemLaserScan, self).__init__(project, H, W, fov_up, fov_down, nuscenes_dataset,pretrain)
     self.reset()
 
     # make semantic colors
@@ -259,7 +381,6 @@ class SemLaserScan(LaserScan):
     else:
         label = np.fromfile(filename, dtype=np.uint8) #resotring from the bin file with data type int32 instead of uint8 of course would decrease the number of points as here 4 points would be considered one point
         
-
     # set it
     self.set_label(label)
 
@@ -289,19 +410,41 @@ class SemLaserScan(LaserScan):
     """ Colorize pointcloud with the color of each semantic label
     """
     self.sem_label_color = self.sem_color_lut[self.sem_label]
+        
     self.sem_label_color = self.sem_label_color.reshape((-1, 3))
 
     self.inst_label_color = self.inst_color_lut[self.inst_label]
+        
     self.inst_label_color = self.inst_label_color.reshape((-1, 3))
-
+    
+    
   def do_label_projection(self):
+    
+    
     # only map colors to labels that exist
     mask = self.proj_idx >= 0
+    loc_proj_idx = self.proj_idx
+    pnts_sem_label = self.sem_label
+    pnts_inst_label = self.inst_label
+        
+    
+    #example of indexing
+    # # # x=np.random.randn(10)
+    # # # >>> x
+    # # # array([-0.14319588,  0.66993997, -0.07680863, -0.47198734,  0.42516838,
+        # # # 2.19093034,  1.23173677, -1.45327592,  0.61254348, -0.35860868])
+    # # # >>> y = np.array([[0,1],[2,3]])
+    # # # >>> x[y]
+    # # # array([[-0.14319588,  0.66993997],
+       # # # [-0.07680863, -0.47198734]])
+       
 
+    # proj_idx carries the original ids in the points array but in the 2d matrix, and mask defines the location in this 2d matrix
+    # sem_label carries the labels and sem_color_lut carries the color of each label (which should not be affected by point dropping)
     # semantics
-    self.proj_sem_label[mask] = self.sem_label[self.proj_idx[mask]]
-    self.proj_sem_color[mask] = self.sem_color_lut[self.sem_label[self.proj_idx[mask]]]
+    self.proj_sem_label[mask] = pnts_sem_label[loc_proj_idx[mask]]#each cell in the 2d matrix carries an index
+    self.proj_sem_color[mask] = self.sem_color_lut[pnts_sem_label[loc_proj_idx[mask]]]
 
     # instances
-    self.proj_inst_label[mask] = self.inst_label[self.proj_idx[mask]]
-    self.proj_inst_color[mask] = self.inst_color_lut[self.inst_label[self.proj_idx[mask]]]
+    self.proj_inst_label[mask] = pnts_inst_label[loc_proj_idx[mask]]
+    self.proj_inst_color[mask] = self.inst_color_lut[pnts_inst_label[loc_proj_idx[mask]]]
