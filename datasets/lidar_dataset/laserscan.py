@@ -159,7 +159,7 @@ class LaserScan:
         self.proj_mask = (self.proj_idx > 0).astype(np.int32)
         
         if self.pretrain:
-            proj_y, proj_x, depth, ret_points, ret_remission, indices = self.do_range_projection(True)
+            proj_y, proj_x, depth, ret_points, ret_remission, indices = self.do_range_projection(True,param_aug_points = aug_points)
             
             self.reduced_proj_range[proj_y, proj_x] = depth
             self.reduced_proj_xyz[proj_y, proj_x] = ret_points

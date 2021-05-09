@@ -274,7 +274,6 @@ class Encoder(nn.Module):
             
         
         if self.pretrain:
-            self.sigmd = nn.Sigmoid()
             self.rot_head = nn.Linear(config.hidden_size, 1) ###>
             self.rot_axis_head = nn.Linear(config.hidden_size, 1) ###>
             self.contrastive_head = nn.Linear(config.hidden_size, 512) ###>
@@ -288,8 +287,8 @@ class Encoder(nn.Module):
                 attn_weights.append(weights)
         encoded = self.encoder_norm(hidden_states)
         if self.pretrain:
-            x_rot = self.sigmd(self.rot_head(encoded[:, 0]))
-            x_rot_axis = self.sigmd(self.rot_axis_head(encoded[:, 1]))
+            x_rot = self.rot_head(encoded[:, 0])
+            x_rot_axis = self.rot_axis_head(encoded[:, 1])
             x_contrastive = self.contrastive_head(encoded[:, 2])###>
             
             return x_rot, x_rot_axis, x_contrastive, encoded[:, 3:], attn_weights
@@ -302,8 +301,8 @@ class Transformer(nn.Module):
         super(Transformer, self).__init__()
         self.pretrain = pretrain
             
-        self.embeddings = Embeddings(config, img_size=img_size,pretrain)
-        self.encoder = Encoder(config, vis,pretrain)
+        self.embeddings = Embeddings(config, img_size=img_size,pretrain=pretrain)
+        self.encoder = Encoder(config, vis,pretrain=pretrain)
 
     def forward(self, input_ids):
         embedding_output, features,bfr_flat_size_2,bfr_flat_size_3 = self.embeddings(input_ids)
@@ -396,7 +395,7 @@ class DecoderCup(nn.Module):
         self.config = config
         head_channels = 512
         self.conv_more = Conv2dReLU(
-            config.hidden_size*2,
+            config.hidden_size,  #*2 was removed as the concatenation after the transformer with the output of the resnet was removed
             head_channels,
             kernel_size=3,
             padding=1,
@@ -441,7 +440,7 @@ class VisionTransformer(nn.Module):
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
-        self.transformer = Transformer(config, img_size, vis,pretrain)
+        self.transformer = Transformer(config, img_size, vis,pretrain=pretrain)
         self.decoder = DecoderCup(config)
         if pretrain:
             self.recon_head = SegmentationHead(

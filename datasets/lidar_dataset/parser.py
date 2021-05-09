@@ -101,25 +101,28 @@ class SemanticKitti(Dataset):
           # label_path = os.path.join(self.root, seq, "labels")
           
           scan_path = os.path.join(self.root, "volodyne_points", "data_odometry_velodyne", "dataset", "sequences", seq, "velodyne")
-          label_path = os.path.join(self.root, "data_odometry_labels", "dataset", "sequences", seq, "labels")
 
           # get files
           scan_files = [os.path.join(dp, f) for dp, dn, fn in os.walk(
               os.path.expanduser(scan_path)) for f in fn if is_scan(f)]
-          label_files = [os.path.join(dp, f) for dp, dn, fn in os.walk(
-              os.path.expanduser(label_path)) for f in fn if is_label(f)]
-
+          
+          scan_files_accum.extend(scan_files)
+          
           # check all scans have labels
           if self.gt:
-            assert(len(scan_files) == len(label_files))
+              label_path = os.path.join(self.root, "data_odometry_labels", "dataset", "sequences", seq, "labels")
+              label_files = [os.path.join(dp, f) for dp, dn, fn in os.walk(
+                  os.path.expanduser(label_path)) for f in fn if is_label(f)]
 
-          # extend list
-          scan_files_accum.extend(scan_files)
-          label_files_accum.extend(label_files)
+              assert(len(scan_files) == len(label_files))
+
+              # extend list
+              label_files_accum.extend(label_files)
 
         # sort for correspondance
         scan_files_accum.sort()
-        label_files_accum.sort()
+        if self.gt:
+            label_files_accum.sort()
         
     else:
         nusc = NuScenes(version='v1.0-trainval', dataroot=self.root, verbose=True)
@@ -132,10 +135,13 @@ class SemanticKitti(Dataset):
             
             while(True):
                 lidar_data = nusc.get('sample_data', my_sample['data']['LIDAR_TOP'])
-                lidar_seg = nusc.get('lidarseg', my_sample['data']['LIDAR_TOP']) #returns data as # # print(nusc.lidarseg[index])
                 
                 scan_files_accum.append(osp.join(self.root, lidar_data["filename"]))
-                label_files_accum.append(osp.join(self.root, lidar_seg["filename"]))
+                
+                if self.gt:
+                    lidar_seg = nusc.get('lidarseg', my_sample['data']['LIDAR_TOP']) #returns data as # # print(nusc.lidarseg[index])
+                    
+                    label_files_accum.append(osp.join(self.root, lidar_seg["filename"]))
                 
                 if(my_sample['next'] == ''):
                     break
@@ -143,10 +149,16 @@ class SemanticKitti(Dataset):
                 my_sample = nusc.get('sample', my_sample['next'])
     
     for i in range(len(scan_files_accum)):
-        self.files.append({
-            "scan": scan_files_accum[i],
-            "label": label_files_accum[i]
-        })
+        
+        if self.gt:
+            self.files.append({
+                "scan": scan_files_accum[i],
+                "label": label_files_accum[i]
+            })
+        else:
+            self.files.append({
+                "scan": scan_files_accum[i]
+            })
         
     
 
@@ -234,7 +246,7 @@ class SemanticKitti(Dataset):
     
     if self.pretrain:
         # get points and labels
-        reduced_proj_range = torch.from_numpy(scan.reduced_proj_range.clone()
+        reduced_proj_range = torch.from_numpy(scan.reduced_proj_range).clone()
         reduced_proj_xyz = torch.from_numpy(scan.reduced_proj_xyz).clone()
         reduced_proj_remission = torch.from_numpy(scan.reduced_proj_remission).clone()
         reduced_proj_mask = torch.from_numpy(scan.reduced_proj_mask)
@@ -289,7 +301,7 @@ class SemanticKitti(Dataset):
         proj_2 = proj_2 * proj_mask_2.float()
         
         # get points and labels
-        reduced_proj_range_2 = torch.from_numpy(scan_2.reduced_proj_range.clone()
+        reduced_proj_range_2 = torch.from_numpy(scan_2.reduced_proj_range).clone()
         reduced_proj_xyz_2 = torch.from_numpy(scan_2.reduced_proj_xyz).clone()
         reduced_proj_remission_2 = torch.from_numpy(scan_2.reduced_proj_remission).clone()
         reduced_proj_mask_2 = torch.from_numpy(scan_2.reduced_proj_mask)

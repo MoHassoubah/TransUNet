@@ -37,7 +37,7 @@ class LearnedLoss():
             self.lossF = torch.nn.CrossEntropyLoss()
             self.adj = 1
         elif losstype == 'BinaryCrossEntropy':
-            self.lossF = torch.nn.BCELoss()
+            self.lossF = torch.nn.BCEWithLogitsLoss()
             self.adj = 1
         elif losstype == 'L1':
             self.lossF = torch.nn.L1Loss()

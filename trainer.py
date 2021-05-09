@@ -23,6 +23,78 @@ from ioueval import *
 import os, shutil
 
 from losses import MTL_loss
+import cv2
+from matplotlib import pyplot as plt
+
+def get_mpl_colormap(cmap_name):
+    cmap = plt.get_cmap(cmap_name)
+    # Initialize the matplotlib color map
+    sm = plt.cm.ScalarMappable(cmap=cmap)
+    # Obtain linear color range
+    color_range = sm.to_rgba(np.linspace(0, 1, 256), bytes=True)[:, 2::-1]
+    return color_range.reshape(256, 1, 3)
+
+def make_log_img(depth_gt, depth_gt_reduced, depth_pred, mask, mask_reduced, pred, color_fn,  gt, pretrain=False):
+    
+    if pretrain:
+        # input should be [depth, pred, gt]
+        # make range image (normalized to 0,1 for saving)
+        depth_gt = (cv2.normalize(depth_gt, None, alpha=0, beta=1,
+                               norm_type=cv2.NORM_MINMAX,
+                               dtype=cv2.CV_32F) * 255.0).astype(np.uint8)  
+        out_img = cv2.applyColorMap(
+            depth_gt, get_mpl_colormap('viridis')) * mask[..., None] 
+            
+        depth_gt_reduced = (cv2.normalize(depth_gt_reduced, None, alpha=0, beta=1,
+                               norm_type=cv2.NORM_MINMAX,
+                               dtype=cv2.CV_32F) * 255.0).astype(np.uint8)  
+        depth_reduced_img = cv2.applyColorMap(
+            depth_gt_reduced, get_mpl_colormap('viridis')) * mask_reduced[..., None]  
+            
+        out_img = np.concatenate([out_img, depth_reduced_img], axis=0)
+        
+            
+        depth_pred = (cv2.normalize(np.float32(depth_pred), None, alpha=0, beta=1,
+                               norm_type=cv2.NORM_MINMAX,
+                               dtype=cv2.CV_32F) * 255.0).astype(np.uint8)  
+        depth_pred_img = cv2.applyColorMap(
+            depth_pred, get_mpl_colormap('viridis')) * mask[..., None]  
+            
+        out_img = np.concatenate([out_img, depth_pred_img], axis=0)
+    
+    else:
+        # make label prediction
+        # pred_color = color_fn((pred * mask).astype(np.int32))
+            
+        out_img = color_fn((pred * mask).astype(np.int32))#np.concatenate([out_img, pred_color], axis=0)
+        
+        gt_color = color_fn(gt)
+        out_img = np.concatenate([out_img, gt_color], axis=0)
+        
+    return (out_img).astype(np.uint8)
+    
+def save_img(depth_gt, depth_gt_reduced, depth_pred, proj_mask, proj_mask_reduced, seg_outputs, proj_labels, parser_to_color, i_iter, pretrain=False):
+    
+    SAVE_PATH_kitti = '../result_train'
+    if not pretrain:
+        output = seg_outputs[0].permute(1,2,0).cpu().numpy()
+        output = np.asarray(np.argmax(output, axis=2), dtype=np.uint8)
+        
+        
+        mask_np = proj_mask[0].cpu().numpy()
+        gt_np = proj_labels[0].cpu().numpy()
+        out = make_log_img(None,None,None,mask_np,None, output, parser_to_color, gt_np, pretrain=args.pretrain )
+    else:
+        depth_gt_np = depth_gt[0][0].cpu().numpy()
+        depth_gt_reduced_np = depth_gt_reduced[0][0].cpu().numpy()
+        depth_pred_np = depth_pred[0][0].cpu().numpy()
+        mask_np = proj_mask[0].cpu().numpy()
+        mask_np_reduced =proj_mask_reduced[0].cpu().numpy()
+        out = make_log_img(depth_gt_np, depth_gt_reduced_np, depth_pred_np, mask_np, mask_np_reduced, None, parser_to_color, None, pretrain=pretrain )
+        
+    # print(name)
+    name_2_save = os.path.join(SAVE_PATH_kitti, '_'+str(i_iter) + '.png')
+    cv2.imwrite(name_2_save, out)
         
 def trainer_kitti(args, model, snapshot_path, parser):
     from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
@@ -51,7 +123,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
     
     
     #Empty the TensorBoard directory
-    dir_path = 'C:/msc_codes/proj_tansUnet/model/TU_Kitti64x1024/TU_pretrain_R50-ViT-B_16_skip3_epo150_bs5_64x1024/log'
+    dir_path = snapshot_path+'/log'
 
     try:
         shutil.rmtree(dir_path)
@@ -116,11 +188,20 @@ def trainer_kitti(args, model, snapshot_path, parser):
                     rot_prd,rot_axis_prd, contrastive_prd, recon_prd, rot_w, rot_axis_w, contrastive_w, recons_w = model(reduced_image_batch)
                     rot_prd_2,rot_axis_prd_2, contrastive_prd_2, recon_prd_2, _, _, _, _                         = model(reduced_image_batch_2)
                         
-                    rot_p = torch.cat([rot_prd, rot_prd_2], dim=0) 
+                    rot_p = torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)
                     rots = torch.cat([rot_ang_0_is_0_180_is_1_batch, rot_ang_0_is_0_180_is_1_batch_2], dim=0) 
+                    rots = rots.type_as(rot_p)
                     
-                    rot_axis_p = torch.cat([rot_axis_prd, rot_axis_prd_2], dim=0) 
+                    # print("target rots")
+                    # print(rots.shape)
+                    # print(rots.dtype)
+                    
+                    # print("predicted rots")
+                    # print(rot_p.shape)
+                    
+                    rot_axis_p = torch.cat([rot_axis_prd, rot_axis_prd_2], dim=0).squeeze(1) 
                     rots_axis = torch.cat([rot_x_is_0_y_is_1_batch, rot_x_is_0_y_is_1_batch_2], dim=0) 
+                    rots_axis = rots_axis.type_as(rot_axis_p)
                     
                     imgs_recon = torch.cat([recon_prd, recon_prd_2], dim=0) 
                     imgs = torch.cat([image_batch, image_batch_2], dim=0) 
@@ -134,6 +215,10 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 writer.add_scalar('info/loss_rot_axis', loss2, iter_num)
                 writer.add_scalar('info/loss_contrastive', loss3, iter_num)
                 writer.add_scalar('info/loss_reconstruction', loss4, iter_num)
+                
+                with torch.no_grad():
+                    if iter_num % 50 == 0 and iter_num != 0:
+                        save_img(image_batch, reduced_image_batch, recon_prd, proj_mask, reduced_proj_mask, None, None, parser.to_color, iter_num, pretrain=True)
             else:
                 (image_batch, proj_mask, label_batch, _, path_seq, path_name, _, _, _, _, _, _, _, _, _) = batch_data
                 
@@ -154,6 +239,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 iou.update(jaccard.item(), args.batch_size)
                 ###########################
                 
+                
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -166,7 +252,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
             writer.add_scalar('info/lr', lr_, iter_num)
             writer.add_scalar('info/loss', loss, iter_num)
 
-            logging.info('iteration %d : loss : %f, loss_ce: %f' % (iter_num, loss.item(), loss_ce.item()))
+            logging.info('iteration %d : loss : %f' % (iter_num, loss.item()))
 
             # if iter_num % 20 == 0:
                 # image = image_batch[1, 0:1, :, :]
@@ -217,11 +303,13 @@ def trainer_kitti(args, model, snapshot_path, parser):
                             rot_prd,rot_axis_prd, contrastive_prd, recon_prd, rot_w, rot_axis_w, contrastive_w, recons_w = model(reduced_image_batch)
                             rot_prd_2,rot_axis_prd_2, contrastive_prd_2, recon_prd_2, _, _, _, _                         = model(reduced_image_batch_2)
                                 
-                            rot_p = torch.cat([rot_prd, rot_prd_2], dim=0) 
+                            rot_p = torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)
                             rots = torch.cat([rot_ang_0_is_0_180_is_1_batch, rot_ang_0_is_0_180_is_1_batch_2], dim=0) 
+                            rots = rots.type_as(rot_p)
                             
-                            rot_axis_p = torch.cat([rot_axis_prd, rot_axis_prd_2], dim=0) 
-                            rots_axis = torch.cat([rot_x_is_0_y_is_1_batch, rot_x_is_0_y_is_1_batch_2], dim=0) 
+                            rot_axis_p = torch.cat([rot_axis_prd, rot_axis_prd_2], dim=0).squeeze(1)
+                            rots_axis = torch.cat([rot_x_is_0_y_is_1_batch, rot_x_is_0_y_is_1_batch_2], dim=0)
+                            rots_axis = rots_axis.type_as(rot_axis_p) 
                             
                             imgs_recon = torch.cat([recon_prd, recon_prd_2], dim=0) 
                             imgs = torch.cat([image_batch, image_batch_2], dim=0) 
