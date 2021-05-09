@@ -215,10 +215,16 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 writer.add_scalar('info/loss_rot_axis', loss2, iter_num)
                 writer.add_scalar('info/loss_contrastive', loss3, iter_num)
                 writer.add_scalar('info/loss_reconstruction', loss4, iter_num)
+                #loss1->rotation loss
+                #loss2->rotation axis loss
+                #loss3->contrastive loss
+                #loss4->reconstruction loss
+                logging.info('iteration %d : loss : %f, loss1 : %f, loss2 : %f, loss3 : %f, loss4 : %f' % (iter_num, loss.item(), \
+                loss1.item(), loss2.item(), loss3.item(), loss4.item()))
                 
-                with torch.no_grad():
-                    if iter_num % 50 == 0 and iter_num != 0:
-                        save_img(image_batch, reduced_image_batch, recon_prd, proj_mask, reduced_proj_mask, None, None, parser.to_color, iter_num, pretrain=True)
+                # with torch.no_grad():
+                    # if iter_num % 50 == 0 and iter_num != 0:
+                        # save_img(image_batch, reduced_image_batch, recon_prd, proj_mask, reduced_proj_mask, None, None, parser.to_color, iter_num, pretrain=True)
             else:
                 (image_batch, proj_mask, label_batch, _, path_seq, path_name, _, _, _, _, _, _, _, _, _) = batch_data
                 
@@ -239,6 +245,8 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 iou.update(jaccard.item(), args.batch_size)
                 ###########################
                 
+                logging.info('iteration %d : loss : %f' % (iter_num, loss.item()))
+                
                 
             optimizer.zero_grad()
             loss.backward()
@@ -251,8 +259,6 @@ def trainer_kitti(args, model, snapshot_path, parser):
             iter_num = iter_num + 1
             writer.add_scalar('info/lr', lr_, iter_num)
             writer.add_scalar('info/loss', loss, iter_num)
-
-            logging.info('iteration %d : loss : %f' % (iter_num, loss.item()))
 
             # if iter_num % 20 == 0:
                 # image = image_batch[1, 0:1, :, :]

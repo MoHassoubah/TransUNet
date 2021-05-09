@@ -199,7 +199,7 @@ class LaserScan:
             
   def do_random_rotation(self, aug_points):
     self.rot_ang_0_is_0_180_is_1 = np.random.choice([0, 1])
-    theta = np.radians(self.rot_ang_0_is_0_180_is_1*180)
+    theta = self.rot_ang_0_is_0_180_is_1*np.pi
     c, s = np.cos(theta), np.sin(theta)
     self.rot_x_is_0_y_is_1 = np.random.choice([0, 1])
     if self.rot_x_is_0_y_is_1:
@@ -248,6 +248,11 @@ class LaserScan:
     # laser parameters
     fov_up = self.proj_fov_up / 180.0 * np.pi      # field of view up in rad
     fov_down = self.proj_fov_down / 180.0 * np.pi  # field of view down in rad
+    
+    if self.pretrain and self.rot_ang_0_is_0_180_is_1:
+        fov_up = self.proj_fov_down / 180.0 * np.pi      # field of view up in rad
+        fov_down = self.proj_fov_up / 180.0 * np.pi  # field of view down in rad
+        
     fov = abs(fov_down) + abs(fov_up)  # get field of view total in rad
 
     # get depth of all points

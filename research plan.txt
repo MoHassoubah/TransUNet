@@ -2,3 +2,11 @@
 -try pretraining input and output the same
 -try pretraining like masking parts of the input and autocompletion
 -check the uncertainties for both pretraining techniques
+
+
+
+0-better to know the ways of calculating uncertainty to use it after each finetune
+1-using current status using Sarah's contribution then funetune
+2-using 1 with the weights from the transUnet
+3-using the contrastive loss on Patches (also with and without transUnet weights)
+4-at the location of the removed indices add noise in the projection instead of only zeros
