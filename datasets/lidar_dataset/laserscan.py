@@ -198,18 +198,20 @@ class LaserScan:
     return aug_points
             
   def do_random_rotation(self, aug_points):
-    self.rot_ang_0_is_0_180_is_1 = np.random.choice([0, 1])
-    theta = self.rot_ang_0_is_0_180_is_1*np.pi
-    c, s = np.cos(theta), np.sin(theta)
+    self.rot_ang_0_is_0_180_is_1 = np.random.choice([0, 1]) #to use BCEWITHLOGITSLOSS targets should be between 0 and 1
     self.rot_x_is_0_y_is_1 = np.random.choice([0, 1])
-    if self.rot_x_is_0_y_is_1:
-        #rotate around y axis
-        R = np.array(((c, 0, s), (0,1,0),(-s,0, c)))
-    else:
-        #rotate around x axis
-        R = np.array(((1,0,0), (0,c,-s),(0,s, c)))
-        
-    aug_points = np.matmul(aug_points,R)   
+    
+    if self.rot_ang_0_is_0_180_is_1:
+        theta = self.rot_ang_0_is_0_180_is_1*np.pi
+        c, s = np.cos(theta), np.sin(theta)
+        if self.rot_x_is_0_y_is_1:
+            #rotate around y axis
+            R = np.array(((c, 0, s), (0,1,0),(-s,0, c)))
+        else:
+            #rotate around x axis
+            R = np.array(((1,0,0), (0,c,-s),(0,s, c)))
+                
+        aug_points = np.matmul(aug_points,R)   
     return aug_points
     
   def do_cloud_augmentatiion(self):
@@ -220,7 +222,7 @@ class LaserScan:
     return aug_points
     
   def drop_x_percent_frm_pntcloud(self):
-    dropping_ratio = np.random.uniform(0.25, 0.5)
+    dropping_ratio = np.random.uniform(0.5, 0.75)
     num_pnts = self.points.shape[0]
     num_dropped_pnts = int(num_pnts*dropping_ratio)
     rng = default_rng()

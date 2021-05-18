@@ -135,6 +135,7 @@ class Embeddings(nn.Module):
             self.rot_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))###>
             self.rot_axis_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))###>
             self.contrastive_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))###>
+            self.ext_tok_pos_embeddings = nn.Parameter(torch.zeros(1, self.num_tokens, config.hidden_size))
 
         if config.patches.get("grid") is not None:   # ResNet
             grid_size = config.patches["grid"]
@@ -159,7 +160,7 @@ class Embeddings(nn.Module):
                                        out_channels=config.hidden_size,
                                        kernel_size=patch_size,
                                        stride=patch_size)#output size =img_size[0] after resnet / patch_size[0] = n_patches^(1/2)
-        self.position_embeddings = nn.Parameter(torch.zeros(1, n_patches + self.num_tokens, config.hidden_size))
+        self.position_embeddings = nn.Parameter(torch.zeros(1, n_patches, config.hidden_size))
 
         self.dropout = Dropout(config.transformer["dropout_rate"])
 
@@ -194,9 +195,11 @@ class Embeddings(nn.Module):
             rot_token = self.rot_token.expand(B, -1, -1) 
             rot_axis_token = self.rot_axis_token.expand(B, -1, -1) 
             contrastive_token = self.contrastive_token.expand(B, -1, -1) 
-            x = torch.cat((rot_token, rot_axis_token,contrastive_token, x), dim=1) ###>
-
-        embeddings = x + self.position_embeddings
+            x = torch.cat((rot_token,rot_axis_token,contrastive_token, x), dim=1) ###>
+            all_pos_embeddings = torch.cat((self.ext_tok_pos_embeddings, self.position_embeddings), dim=1) ###>
+            embeddings = x + all_pos_embeddings
+        else:
+            embeddings = x + self.position_embeddings
         embeddings = self.dropout(embeddings)
         return embeddings, features,retain_size_2,retain_size_3
 

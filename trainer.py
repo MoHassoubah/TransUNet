@@ -26,6 +26,8 @@ from losses import MTL_loss
 import cv2
 from matplotlib import pyplot as plt
 
+
+
 def get_mpl_colormap(cmap_name):
     cmap = plt.get_cmap(cmap_name)
     # Initialize the matplotlib color map
@@ -199,8 +201,8 @@ def trainer_kitti(args, model, snapshot_path, parser):
                     # print("predicted rots")
                     # print(rot_p.shape)
                     
-                    rot_axis_p = torch.cat([rot_axis_prd, rot_axis_prd_2], dim=0).squeeze(1) 
-                    rots_axis = torch.cat([rot_x_is_0_y_is_1_batch, rot_x_is_0_y_is_1_batch_2], dim=0) 
+                    rot_axis_p = torch.cat([rot_axis_prd[rot_ang_0_is_0_180_is_1_batch==1], rot_axis_prd_2[rot_ang_0_is_0_180_is_1_batch_2==1]], dim=0).squeeze(1) 
+                    rots_axis = torch.cat([rot_x_is_0_y_is_1_batch[rot_ang_0_is_0_180_is_1_batch==1], rot_x_is_0_y_is_1_batch_2[rot_ang_0_is_0_180_is_1_batch_2==1]], dim=0) 
                     rots_axis = rots_axis.type_as(rot_axis_p)
                     
                     imgs_recon = torch.cat([recon_prd, recon_prd_2], dim=0) 
@@ -221,6 +223,9 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 #loss4->reconstruction loss
                 logging.info('iteration %d : loss : %f, loss1 : %f, loss2 : %f, loss3 : %f, loss4 : %f' % (iter_num, loss.item(), \
                 loss1.item(), loss2.item(), loss3.item(), loss4.item()))
+                
+                # logging.info('iteration %d : rot_axis_w : %f, contrastive_w : %f, recons_w : %f' % (iter_num, \
+                # rot_axis_w.item(), contrastive_w.item(), recons_w.item()))
                 
                 # with torch.no_grad():
                     # if iter_num % 50 == 0 and iter_num != 0:
@@ -251,6 +256,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            
             lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9
             for param_group in optimizer.param_groups:
                 param_group['lr'] = lr_
@@ -275,7 +281,12 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 
         ##############################################
         ##############################################
-        if (epoch_num + 1) % 10 == 0:
+        if args.pretrain:
+            valid_interval=5
+        else:
+            valid_interval=10
+            
+        if (epoch_num + 1) % valid_interval == 0:
             evaluator.reset()
             iou.reset()
             
@@ -313,9 +324,10 @@ def trainer_kitti(args, model, snapshot_path, parser):
                             rots = torch.cat([rot_ang_0_is_0_180_is_1_batch, rot_ang_0_is_0_180_is_1_batch_2], dim=0) 
                             rots = rots.type_as(rot_p)
                             
-                            rot_axis_p = torch.cat([rot_axis_prd, rot_axis_prd_2], dim=0).squeeze(1)
-                            rots_axis = torch.cat([rot_x_is_0_y_is_1_batch, rot_x_is_0_y_is_1_batch_2], dim=0)
-                            rots_axis = rots_axis.type_as(rot_axis_p) 
+                            
+                            rot_axis_p = torch.cat([rot_axis_prd[rot_ang_0_is_0_180_is_1_batch==1], rot_axis_prd_2[rot_ang_0_is_0_180_is_1_batch_2==1]], dim=0).squeeze(1) 
+                            rots_axis = torch.cat([rot_x_is_0_y_is_1_batch[rot_ang_0_is_0_180_is_1_batch==1], rot_x_is_0_y_is_1_batch_2[rot_ang_0_is_0_180_is_1_batch_2==1]], dim=0) 
+                            rots_axis = rots_axis.type_as(rot_axis_p)
                             
                             imgs_recon = torch.cat([recon_prd, recon_prd_2], dim=0) 
                             imgs = torch.cat([image_batch, image_batch_2], dim=0) 
@@ -327,10 +339,6 @@ def trainer_kitti(args, model, snapshot_path, parser):
                                                                         
                         val_losses.update(loss.mean().item(), args.batch_size)
                             
-                        writer.add_scalar('info/loss_rotation', loss1, iter_num)
-                        writer.add_scalar('info/loss_rot_axis', loss2, iter_num)
-                        writer.add_scalar('info/loss_contrastive', loss3, iter_num)
-                        writer.add_scalar('info/loss_reconstruction', loss4, iter_num)
                     else:
                         (image_batch, proj_mask, label_batch, _, path_seq, path_name, _, _, _, _, _, _, _, _, _) =  batch_data               
                         image_batch, label_batch = image_batch.cuda(), label_batch.cuda(non_blocking=True).long()
@@ -360,7 +368,11 @@ def trainer_kitti(args, model, snapshot_path, parser):
         ##############################################
 
             
-        save_interval = 30  # int(max_epoch/6)
+        if args.pretrain:
+            save_interval = 5  # int(max_epoch/6)
+        else:
+            save_interval = 10 
+                
         # if epoch_num > int(max_epoch / 2) and (epoch_num + 1) % save_interval == 0:
         if (epoch_num + 1) % save_interval == 0:
             save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')

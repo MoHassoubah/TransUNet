@@ -4,6 +4,7 @@ import os
 import random
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
@@ -14,9 +15,12 @@ import yaml
 
 
 DATA_DIRECTORY = 'C:\lidar_datasets\kitti_data'     #'./data/GTA5' #should be the path of the kitti LiDAR data
+RESTORE_FROM_DIRECTORY = 'C:\msc_codes\proj_tansUnet\model\TU_Kitti64x1024\TU_pretrain_R50-ViT-B_16_skip3_epo150_bs3_64x1024'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
+                    default=DATA_DIRECTORY, help='root dir for data')
+parser.add_argument('--restore_from', type=str,
                     default=DATA_DIRECTORY, help='root dir for data')
 parser.add_argument('--dataset', type=str,
                     default='Kitti', help='experiment_name')
@@ -70,6 +74,22 @@ parser.add_argument(
   )
 args = parser.parse_args()
 
+def weights_init(m):
+    classname = m.__class__.__name__
+    if type(m) == nn.Conv2d:#classname.find('Conv') != -1 and classname!= "Conv2dReLU":
+        # m.weight.data.uniform_(-0.08 , 0.08)
+        nn.init.xavier_uniform_(m.weight)#, gain=nn.init.calculate_gain('relu'))
+    elif classname.find('ConvTranspose') != -1:
+        # m.weight.data.uniform_(-0.08 , 0.08)
+        nn.init.xavier_uniform_(m.weight)
+    elif classname.find('BatchNorm') != -1:
+        m.weight.data.uniform_(-0.08 , 0.08)
+        # nn.init.xavier_uniform_(m.weight)
+        m.bias.data.fill_(0)
+    elif type(m) == nn.Linear:#classname.find('Linear') != -1:
+        # m.weight.data.uniform_(-0.08 , 0.08)
+        nn.init.xavier_uniform_(m.weight)
+        m.bias.data.fill_(0.01)
 
 if __name__ == "__main__":
     if not args.deterministic:
@@ -171,8 +191,19 @@ if __name__ == "__main__":
     if args.vit_name.find('R50') != -1:
         config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
     net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain).cuda()
-    if not args.pretrain:
-        net.load_from(weights=np.load(config_vit.pretrained_path))
+    net.apply(weights_init)
+    # if not args.pretrain:
+        # # net.load_from(weights=np.load(config_vit.pretrained_path))
+        
+        # #################
+        # new_params = net.state_dict().copy()
+        # saved_state_dict = torch.load(RESTORE_FROM_DIRECTORY + '\\' +args.restore_from+'.pth')
+
+        # saved_state_dict = {k: v for k, v in saved_state_dict.items() if k in new_params}
+        # new_params.update(saved_state_dict) 
+        
+        # net.load_state_dict(new_params)
+        # ################
 
     trainer = {'Kitti': trainer_kitti,}
     

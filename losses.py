@@ -51,7 +51,11 @@ class LearnedLoss():
         return self.lossF(output, label)
 
     def calculate_weighted_loss(self, loss, _s):
-        return (self.adj * torch.exp(-_s) * loss) + (0.5 * _s) #_s is log(std^2)
+        w_loss =  (self.adj * torch.exp(-_s) * loss) + (0.5 * _s) #_s is log(std^2)
+        if w_loss.item()>0:
+            return w_loss
+        else:
+            return w_loss*0
     
 class MTLLOSS():
     def __init__(self, loss_funcs, device):
@@ -67,8 +71,11 @@ class MTLLOSS():
         r_loss = self._loss_funcs[0].calculate_loss(output_rot, target_rot)
         rotation_loss = self._loss_funcs[0].calculate_weighted_loss(r_loss, rot_w) 
         
-        r_axis_loss = self._loss_funcs[3].calculate_loss(output_rot_axis, target_rot_axis)
-        rotation_axis_loss = self._loss_funcs[3].calculate_weighted_loss(r_axis_loss, rot_axis_w) 
+        if len(target_rot_axis)>0:
+            r_axis_loss = self._loss_funcs[3].calculate_loss(output_rot_axis, target_rot_axis)
+            rotation_axis_loss = self._loss_funcs[3].calculate_weighted_loss(r_axis_loss, rot_axis_w) 
+        else:
+            rotation_axis_loss=r_axis_loss = torch.tensor(0)
             
         cn_loss = self._loss_funcs[1].calculate_loss(output_contrastive, target_contrastive)        
         contrastive_loss = self._loss_funcs[1].calculate_weighted_loss(cn_loss, contrastive_w) 
