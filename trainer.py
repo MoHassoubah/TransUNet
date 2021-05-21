@@ -286,7 +286,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
         else:
             valid_interval=10
             
-        if (epoch_num + 1) % valid_interval == 0:
+        if (epoch_num + 1) % 1 == 0:
             evaluator.reset()
             iou.reset()
             
