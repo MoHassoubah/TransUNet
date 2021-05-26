@@ -63,39 +63,33 @@ class MTLLOSS():
         self._loss_funcs = loss_funcs
         self.device = device
 
-    def __call__(self, output_rot, target_rot,output_rot_axis, target_rot_axis, output_contrastive, target_contrastive, 
-                 output_recons, target_recons, rot_w, rot_axis_w,contrastive_w, reconstruction_w):
+    def __call__(self, output_rot, target_rot, output_contrastive, target_contrastive, 
+                 output_recons, target_recons, rot_w,contrastive_w, reconstruction_w):
         """Returns (overall loss, [seperate task losses])"""
 
         
-        # r_loss = self._loss_funcs[0].calculate_loss(output_rot, target_rot)
-        # rotation_loss = self._loss_funcs[0].calculate_weighted_loss(r_loss, rot_w) 
+        r_loss = self._loss_funcs[0].calculate_loss(output_rot, target_rot)
+        rotation_loss = self._loss_funcs[0].calculate_weighted_loss(r_loss, rot_w) 
         
-        # if len(target_rot_axis)>0:
-            # r_axis_loss = self._loss_funcs[3].calculate_loss(output_rot_axis, target_rot_axis)
-            # rotation_axis_loss = self._loss_funcs[3].calculate_weighted_loss(r_axis_loss, rot_axis_w) 
-        # else:
-            # rotation_axis_loss=r_axis_loss = torch.tensor(0)
             
-        cn_loss = self._loss_funcs[1].calculate_loss(output_contrastive, target_contrastive)        
-        contrastive_loss = self._loss_funcs[1].calculate_weighted_loss(cn_loss, contrastive_w) 
+        # cn_loss = self._loss_funcs[1].calculate_loss(output_contrastive, target_contrastive)        
+        # contrastive_loss = self._loss_funcs[1].calculate_weighted_loss(cn_loss, contrastive_w) 
                 
         rec_loss = self._loss_funcs[2].calculate_loss(output_recons, target_recons)
         reconstruction_loss = self._loss_funcs[2].calculate_weighted_loss(rec_loss, reconstruction_w) 
                 
         # total_loss = rotation_loss + rotation_axis_loss + contrastive_loss + reconstruction_loss
-        total_loss = contrastive_loss + reconstruction_loss
-        print("contrastive_loss=  " +str(contrastive_loss) +"    "+"reconstruction_loss=  "+str(reconstruction_loss))
-        return total_loss, (torch.tensor(0), torch.tensor(0), cn_loss, rec_loss)
+        total_loss = rotation_loss + reconstruction_loss
+        print("rotation_loss=  " +str(rotation_loss.item()) +"********"+"reconstruction_loss=  "+str(reconstruction_loss.item()))
+        return total_loss, (r_loss, torch.tensor(0), rec_loss)
 
     
 def MTL_loss(device, batch_size):
     """Returns the learned uncertainty loss function."""
 
-    task_rot = LearnedLoss('BinaryCrossEntropy') 
-    task_rot_axis = LearnedLoss('BinaryCrossEntropy') 
+    task_rot = LearnedLoss('CrossEntropy') 
     task_contrastive  = LearnedLoss('Contrastive', batch_size) 
     task_recons = LearnedLoss('L1') 
-    return MTLLOSS([task_rot, task_contrastive, task_recons,task_rot_axis], device)
+    return MTLLOSS([task_rot, task_contrastive, task_recons], device)
 
         

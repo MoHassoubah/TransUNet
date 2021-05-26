@@ -327,9 +327,9 @@ class SemanticKitti(Dataset):
     if not self.pretrain:
         return proj, proj_mask, proj_labels, unproj_labels, path_seq, path_name, proj_x, proj_y, proj_range, unproj_range, proj_xyz, unproj_xyz, proj_remission, unproj_remissions, unproj_n_points
     else:
-        return proj, proj_mask, reduced_proj, reduced_proj_mask, scan.rot_ang_0_is_0_180_is_1, \
-        scan.rot_x_is_0_y_is_1, proj_2, proj_mask_2, reduced_proj_2, reduced_proj_mask_2,\
-        scan_2.rot_ang_0_is_0_180_is_1, scan_2.rot_x_is_0_y_is_1, path_seq, path_name
+        return proj, proj_mask, reduced_proj, reduced_proj_mask, scan.rot_ang_around_z_axis, \
+        proj_2, proj_mask_2, reduced_proj_2, reduced_proj_mask_2,\
+        scan_2.rot_ang_around_z_axis, path_seq, path_name
         
         
   def __len__(self):

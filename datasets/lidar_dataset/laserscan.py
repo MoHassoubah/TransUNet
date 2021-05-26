@@ -198,18 +198,12 @@ class LaserScan:
     return aug_points
             
   def do_random_rotation(self, aug_points):
-    self.rot_ang_0_is_0_180_is_1 = np.random.choice([0, 1]) #to use BCEWITHLOGITSLOSS targets should be between 0 and 1
-    self.rot_x_is_0_y_is_1 = np.random.choice([0, 1])
+    self.rot_ang_around_z_axis = np.random.randint(0, 4) 
     
-    if self.rot_ang_0_is_0_180_is_1:
-        theta = self.rot_ang_0_is_0_180_is_1*np.pi
+    if self.rot_ang_around_z_axis:
+        theta = np.radians(self.rot_ang_around_z_axis*90)
         c, s = np.cos(theta), np.sin(theta)
-        if self.rot_x_is_0_y_is_1:
-            #rotate around y axis
-            R = np.array(((c, 0, s), (0,1,0),(-s,0, c)))
-        else:
-            #rotate around x axis
-            R = np.array(((1,0,0), (0,c,-s),(0,s, c)))
+        R = np.array(((c,-s,0), (s,c,0),(0,0, 1)))
                 
         aug_points = np.matmul(aug_points,R)   
     return aug_points
@@ -251,9 +245,6 @@ class LaserScan:
     fov_up = self.proj_fov_up / 180.0 * np.pi      # field of view up in rad
     fov_down = self.proj_fov_down / 180.0 * np.pi  # field of view down in rad
     
-    if self.pretrain and self.rot_ang_0_is_0_180_is_1:
-        fov_up = self.proj_fov_down / 180.0 * np.pi      # field of view up in rad
-        fov_down = self.proj_fov_up / 180.0 * np.pi  # field of view down in rad
         
     fov = abs(fov_down) + abs(fov_up)  # get field of view total in rad
 
