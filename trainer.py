@@ -176,20 +176,20 @@ def trainer_kitti(args, model, snapshot_path, parser):
             
                 image_batch = image_batch.to(device, non_blocking=True)
                 reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
-                rot_ang_around_z_axis_batch = rot_ang_around_z_axis_batch.to(device, non_blocking=True).long()
+                # rot_ang_around_z_axis_batch = rot_ang_around_z_axis_batch.to(device, non_blocking=True).long()
                 
                 
-                image_batch_2 = image_batch_2.to(device, non_blocking=True)
-                reduced_image_batch_2 = reduced_image_batch_2.to(device, non_blocking=True) # Apply distortion
-                rot_ang_around_z_axis_batch_2 = rot_ang_around_z_axis_batch_2.to(device, non_blocking=True).long()
+                # image_batch_2 = image_batch_2.to(device, non_blocking=True)
+                # reduced_image_batch_2 = reduced_image_batch_2.to(device, non_blocking=True) # Apply distortion
+                # rot_ang_around_z_axis_batch_2 = rot_ang_around_z_axis_batch_2.to(device, non_blocking=True).long()
                 
                 with torch.cuda.amp.autocast():
                 
                     rot_prd, contrastive_prd, recon_prd, rot_w, contrastive_w, recons_w = model(reduced_image_batch)
-                    rot_prd_2, contrastive_prd_2, recon_prd_2, _, _, _                         = model(reduced_image_batch_2)
+                    # rot_prd_2, contrastive_prd_2, recon_prd_2, _, _, _                         = model(reduced_image_batch_2)
                         
-                    rot_p = torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)
-                    rots = torch.cat([rot_ang_around_z_axis_batch, rot_ang_around_z_axis_batch_2], dim=0) 
+                    rot_p = None#torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)
+                    rots = None#torch.cat([rot_ang_around_z_axis_batch, rot_ang_around_z_axis_batch_2], dim=0) 
                     # rots = rots.type_as(rot_p)
                     
                     # print("target rots")
@@ -199,16 +199,16 @@ def trainer_kitti(args, model, snapshot_path, parser):
                     # print("predicted rots")
                     # print(rot_p.shape)
                     
-                    imgs_recon = torch.cat([recon_prd, recon_prd_2], dim=0) 
-                    imgs = torch.cat([image_batch, image_batch_2], dim=0) 
+                    imgs_recon = recon_prd#torch.cat([recon_prd, recon_prd_2], dim=0) 
+                    imgs = image_batch#torch.cat([image_batch, image_batch_2], dim=0) 
                     
                     loss, (loss1, loss2, loss3) = criterion(rot_p, rots, 
-                                                                contrastive_prd, contrastive_prd_2, 
+                                                                None, None, 
                                                                 imgs_recon, imgs, rot_w, contrastive_w, recons_w )
                     
-                writer.add_scalar('info/loss_rotation', loss1, iter_num)
-                writer.add_scalar('info/loss_contrastive', loss2, iter_num)
-                writer.add_scalar('info/loss_reconstruction', loss3, iter_num)
+                # writer.add_scalar('info/loss_rotation', loss1, iter_num)
+                # writer.add_scalar('info/loss_contrastive', loss2, iter_num)
+                # writer.add_scalar('info/loss_reconstruction', loss3, iter_num)
                 #loss1->rotation loss
                 #loss2->rotation axis loss
                 #loss3->contrastive loss
@@ -298,28 +298,35 @@ def trainer_kitti(args, model, snapshot_path, parser):
                     
                         image_batch = image_batch.to(device, non_blocking=True)
                         reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
-                        rot_ang_around_z_axis_batch = rot_ang_around_z_axis_batch.to(device, non_blocking=True).long()
+                        # rot_ang_around_z_axis_batch = rot_ang_around_z_axis_batch.to(device, non_blocking=True).long()
                         
                         
-                        image_batch_2 = image_batch_2.to(device, non_blocking=True)
-                        reduced_image_batch_2 = reduced_image_batch_2.to(device, non_blocking=True) # Apply distortion
-                        rot_ang_around_z_axis_batch_2 = rot_ang_around_z_axis_batch_2.to(device, non_blocking=True).long()
+                        # image_batch_2 = image_batch_2.to(device, non_blocking=True)
+                        # reduced_image_batch_2 = reduced_image_batch_2.to(device, non_blocking=True) # Apply distortion
+                        # rot_ang_around_z_axis_batch_2 = rot_ang_around_z_axis_batch_2.to(device, non_blocking=True).long()
                         
                         with torch.cuda.amp.autocast():
                         
                             rot_prd, contrastive_prd, recon_prd, rot_w, contrastive_w, recons_w = model(reduced_image_batch)
-                            rot_prd_2, contrastive_prd_2, recon_prd_2, _, _, _                         = model(reduced_image_batch_2)
+                            # rot_prd_2, contrastive_prd_2, recon_prd_2, _, _, _                         = model(reduced_image_batch_2)
                                 
-                            rot_p = torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)
-                            rots = torch.cat([rot_ang_around_z_axis_batch, rot_ang_around_z_axis_batch_2], dim=0) 
+                            rot_p = None#torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)
+                            rots = None#torch.cat([rot_ang_around_z_axis_batch, rot_ang_around_z_axis_batch_2], dim=0) 
                             # rots = rots.type_as(rot_p)
-                                                        
-                            imgs_recon = torch.cat([recon_prd, recon_prd_2], dim=0) 
-                            imgs = torch.cat([image_batch, image_batch_2], dim=0) 
+                            
+                            # print("target rots")
+                            # print(rots.shape)
+                            # print(rots.dtype)
+                            
+                            # print("predicted rots")
+                            # print(rot_p.shape)
+                            
+                            imgs_recon = recon_prd#torch.cat([recon_prd, recon_prd_2], dim=0) 
+                            imgs = image_batch#torch.cat([image_batch, image_batch_2], dim=0) 
                             
                             loss, (loss1, loss2, loss3) = criterion(rot_p, rots, 
-                                                                        contrastive_prd, contrastive_prd_2, 
-                                                                        imgs_recon, imgs, rot_w, contrastive_w, recons_w )
+                                                                contrastive_prd, None, 
+                                                                imgs_recon, imgs, rot_w, contrastive_w, recons_w )
                                                                         
                         val_losses.update(loss.mean().item(), args.batch_size)
                             
