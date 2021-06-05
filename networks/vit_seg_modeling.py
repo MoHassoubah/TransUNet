@@ -277,7 +277,7 @@ class Encoder(nn.Module):
             
         
         if self.pretrain:
-            self.rot_head = nn.Linear(config.hidden_size, 4) ###>
+            self.rot_head = nn.Linear(config.hidden_size, 8) ###>
             # self.rot_axis_head = nn.Linear(config.hidden_size, 1) ###>
             self.contrastive_head = nn.Linear(config.hidden_size, 512) ###>
             
@@ -445,7 +445,8 @@ class VisionTransformer(nn.Module):
         self.classifier = config.classifier
         self.transformer = Transformer(config, img_size, vis,pretrain=pretrain)
         if self.pretrain:
-            self.decoder = DecoderCup(config)
+            #self.decoder = DecoderCup(config)
+            pass
         else:
             self.decoder_finetune = DecoderCup(config)
         if pretrain:
@@ -480,12 +481,13 @@ class VisionTransformer(nn.Module):
         # print("x in vision transformer")
         # print(x.size())
         if self.pretrain:
-            x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
+            #x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
+            pass
         else:
             x = self.decoder_finetune(x,bfr_flat_size_2,bfr_flat_size_3, features)
         if self.pretrain:
-            logits = self.recon_head(x)
-            return x_rot, x_contrastive, logits, self.rot_w, self.contrastive_w, self.recons_w
+            # logits = self.recon_head(x)
+            return x_rot, x_contrastive, None, self.rot_w, self.contrastive_w, self.recons_w
         else:
             logits = self.segmentation_head(x)
             return logits

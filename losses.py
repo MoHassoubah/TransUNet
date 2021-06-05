@@ -69,19 +69,19 @@ class MTLLOSS():
 
         
         r_loss = self._loss_funcs[0].calculate_loss(output_rot, target_rot)
-        rotation_loss = self._loss_funcs[0].calculate_weighted_loss(r_loss, rot_w) 
+        # rotation_loss = self._loss_funcs[0].calculate_weighted_loss(r_loss, rot_w) 
         
             
         # cn_loss = self._loss_funcs[1].calculate_loss(output_contrastive, target_contrastive)        
         # contrastive_loss = self._loss_funcs[1].calculate_weighted_loss(cn_loss, contrastive_w) 
                 
-        rec_loss = self._loss_funcs[2].calculate_loss(output_recons, target_recons)
-        reconstruction_loss = self._loss_funcs[2].calculate_weighted_loss(rec_loss, reconstruction_w) 
+        # rec_loss = self._loss_funcs[2].calculate_loss(output_recons, target_recons)
+        # reconstruction_loss = self._loss_funcs[2].calculate_weighted_loss(rec_loss, reconstruction_w) 
                 
         # total_loss = rotation_loss + rotation_axis_loss + contrastive_loss + reconstruction_loss
-        total_loss = rotation_loss + reconstruction_loss
-        print("rotation_loss=  " +str(rotation_loss.item()) +"********"+"reconstruction_loss=  "+str(reconstruction_loss.item()))
-        return total_loss, (r_loss, torch.tensor(0), rec_loss)
+        total_loss = r_loss#rec_lossrotation_loss + reconstruction_loss
+        # print("rotation_loss=  " +str(rotation_loss.item()) +"********"+"reconstruction_loss=  "+str(reconstruction_loss.item()))
+        return total_loss, (r_loss, torch.tensor(0), torch.tensor(0))
 
     
 def MTL_loss(device, batch_size):

@@ -198,10 +198,10 @@ class LaserScan:
     return aug_points
             
   def do_random_rotation(self, aug_points):
-    self.rot_ang_around_z_axis = np.random.randint(0, 4) 
+    self.rot_ang_around_z_axis = np.random.randint(0, 8) 
     
     if self.rot_ang_around_z_axis:
-        theta = np.radians(self.rot_ang_around_z_axis*90)
+        theta = np.radians(self.rot_ang_around_z_axis*45)
         c, s = np.cos(theta), np.sin(theta)
         R = np.array(((c,-s,0), (s,c,0),(0,0, 1)))
                 
@@ -216,7 +216,7 @@ class LaserScan:
     return aug_points
     
   def drop_x_percent_frm_pntcloud(self):
-    dropping_ratio = np.random.uniform(0.5, 0.76)
+    dropping_ratio = np.random.uniform(0.25, 0.51)
     num_pnts = self.points.shape[0]
     num_dropped_pnts = int(num_pnts*dropping_ratio)
     rng = default_rng()
