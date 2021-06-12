@@ -2,6 +2,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from NCE.NCECriterion import NCECriterion
+
 class ContrastiveLoss(nn.Module):
     def __init__(self, batch_size, device='cuda', temperature=0.5):
         super().__init__()
@@ -30,7 +32,7 @@ class ContrastiveLoss(nn.Module):
     
 
 class LearnedLoss():
-    def __init__(self, losstype, batch_size=None):
+    def __init__(self, losstype, ndata=None, batch_size=None):
  
         
         if losstype == 'CrossEntropy':
@@ -45,10 +47,14 @@ class LearnedLoss():
         elif losstype == 'Contrastive':
             self.lossF = ContrastiveLoss(batch_size)
             self.adj = 1
+        elif losstype == 'NCE':
+            self.lossF = NCECriterion(ndata).cuda()
+            self.adj = 1
 
 
-    def calculate_loss(self, output, label):
-        return self.lossF(output, label)
+    def calculate_loss(self, output, label_or_index):
+        return self.lossF(output, label_or_index)
+        
 
     def calculate_weighted_loss(self, loss, _s):
         w_loss =  (self.adj * torch.exp(-_s) * loss) + (0.5 * _s) #_s is log(std^2)
@@ -63,33 +69,32 @@ class MTLLOSS():
         self._loss_funcs = loss_funcs
         self.device = device
 
-    def __call__(self, output_rot, target_rot, output_contrastive, target_contrastive, 
-                 output_recons, target_recons, rot_w,contrastive_w, reconstruction_w):
+    def __call__(self, output_contrastive, index,
+                 output_recons, target_recons,contrastive_w, reconstruction_w):
         """Returns (overall loss, [seperate task losses])"""
 
         
-        r_loss = self._loss_funcs[0].calculate_loss(output_rot, target_rot)
-        rotation_loss = self._loss_funcs[0].calculate_weighted_loss(r_loss, rot_w) 
-        
-            
         # cn_loss = self._loss_funcs[1].calculate_loss(output_contrastive, target_contrastive)        
         # contrastive_loss = self._loss_funcs[1].calculate_weighted_loss(cn_loss, contrastive_w) 
+        
+        nce_loss = self._loss_funcs[2].calculate_loss(output_contrastive, index)     
+        # w_nce_loss = self._loss_funcs[2].calculate_weighted_loss(nce_loss, nce_w) 
                 
-        rec_loss = self._loss_funcs[2].calculate_loss(output_recons, target_recons)
-        reconstruction_loss = self._loss_funcs[2].calculate_weighted_loss(rec_loss, reconstruction_w) 
+        # rec_loss = self._loss_funcs[1].calculate_loss(output_recons, target_recons)
+        # reconstruction_loss = self._loss_funcs[1].calculate_weighted_loss(rec_loss, reconstruction_w) 
                 
-        # total_loss = rotation_loss + rotation_axis_loss + contrastive_loss + reconstruction_loss
-        total_loss = rotation_loss + reconstruction_loss
-        print("rotation_loss=  " +str(rotation_loss.item()) +"********"+"reconstruction_loss=  "+str(reconstruction_loss.item()))
-        return total_loss, (r_loss, torch.tensor(0), rec_loss)
+        # total_loss = contrastive_loss + reconstruction_loss
+        total_loss = nce_loss #+ reconstruction_loss
+        # print("********"+"reconstruction_loss=  "+str(reconstruction_loss.item()))
+        return total_loss, (nce_loss, torch.tensor(0), torch.tensor(0))
 
     
-def MTL_loss(device, batch_size):
+def MTL_loss(device, ndata, batch_size):
     """Returns the learned uncertainty loss function."""
 
-    task_rot = LearnedLoss('CrossEntropy') 
-    task_contrastive  = LearnedLoss('Contrastive', batch_size) 
+    task_contrastive  = LearnedLoss('Contrastive', batch_size=batch_size) 
     task_recons = LearnedLoss('L1') 
-    return MTLLOSS([task_rot, task_contrastive, task_recons], device)
+    task_NCE = LearnedLoss('NCE', ndata=ndata) 
+    return MTLLOSS([task_contrastive, task_recons, task_NCE], device)
 
         

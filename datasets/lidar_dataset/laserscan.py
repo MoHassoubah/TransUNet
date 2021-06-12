@@ -8,7 +8,7 @@ class LaserScan:
   """Class that contains LaserScan with x,y,z,r"""
   EXTENSIONS_SCAN = ['.bin']
 
-  def __init__(self, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0, nuscenes_dataset=False, pretrain=False):
+  def __init__(self, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0, nuscenes_dataset=False, pretrain=False, val_manipulation=False):
     self.project = project
     self.proj_H = H
     self.proj_W = W
@@ -16,6 +16,7 @@ class LaserScan:
     self.proj_fov_down = fov_down
     self.nuscenes_dataset = nuscenes_dataset
     self.pretrain = pretrain
+    self.val_manipulation = val_manipulation
     self.reset()
 
   def reset(self):
@@ -197,26 +198,49 @@ class LaserScan:
             
     return aug_points
             
-  def do_random_rotation(self, aug_points):
-    self.rot_ang_around_z_axis = np.random.randint(0, 4) 
+  def do_random_z_axis_rotation(self, aug_points):
+    if self.val_manipulation:
+        rot_ang_around_z_axis = np.random.randint(0, 16) 
+        rot_resolution = 22.5
+    else:
+        rot_ang_around_z_axis = np.random.randint(0, 4) 
+        rot_resolution = 90
     
-    if self.rot_ang_around_z_axis:
-        theta = np.radians(self.rot_ang_around_z_axis*90)
+    if rot_ang_around_z_axis:
+        theta = np.radians(rot_ang_around_z_axis*rot_resolution)
         c, s = np.cos(theta), np.sin(theta)
         R = np.array(((c,-s,0), (s,c,0),(0,0, 1)))
                 
         aug_points = np.matmul(aug_points,R)   
     return aug_points
     
+  
+  def do_random_x_y_axis_rotation(self, aug_points):
+    rot_x_is_0_y_is_1 = np.random.choice([0, 1])
+    
+    theta = self.rot_ang_0_is_0_180_is_1*np.pi
+    c, s = np.cos(theta), np.sin(theta)
+    if rot_x_is_0_y_is_1:
+        #rotate around y axis
+        R = np.array(((c, 0, s), (0,1,0),(-s,0, c)))
+    else:
+        #rotate around x axis
+        R = np.array(((1,0,0), (0,c,-s),(0,s, c)))
+            
+    aug_points = np.matmul(aug_points,R)   
+    return aug_points
+    
   def do_cloud_augmentatiion(self):
     aug_points = self.do_translation_augmentation()
     aug_points = self.do_random_scaling(aug_points)
     aug_points = self.do_random_flip_x_y_axis(aug_points)
-    aug_points = self.do_random_rotation(aug_points)
+    aug_points = self.do_random_z_axis_rotation(aug_points)
+    # if self.val_manipulation:
+        # aug_points = self.do_random_x_y_axis_rotation(aug_points)
     return aug_points
     
   def drop_x_percent_frm_pntcloud(self):
-    dropping_ratio = np.random.uniform(0.5, 0.76)
+    dropping_ratio = np.random.uniform(0.25, 0.51)
     num_pnts = self.points.shape[0]
     num_dropped_pnts = int(num_pnts*dropping_ratio)
     rng = default_rng()
@@ -244,6 +268,11 @@ class LaserScan:
     # laser parameters
     fov_up = self.proj_fov_up / 180.0 * np.pi      # field of view up in rad
     fov_down = self.proj_fov_down / 180.0 * np.pi  # field of view down in rad
+    
+    
+    if self.pretrain and self.val_manipulation:
+        fov_up = self.proj_fov_down / 180.0 * np.pi      # field of view up in rad
+        fov_down = self.proj_fov_up / 180.0 * np.pi  # field of view down in rad
     
         
     fov = abs(fov_down) + abs(fov_up)  # get field of view total in rad

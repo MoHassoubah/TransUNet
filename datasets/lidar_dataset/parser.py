@@ -35,10 +35,12 @@ class SemanticKitti(Dataset):
                max_points=150000,   # max number of points present in dataset
                gt=True,            # send ground truth?
                nuscenes_dataset=False,         # nuscebes dataset?
-               pretrain=False):                 # use pretraining flag
+               pretrain=False,                 # use pretraining flag
+               val_manipulation=False):        #use for val augmentation in the NCE
     # save deats
     self.root = root #os.path.join(root, "sequences") #root
     self.pretrain = pretrain
+    self.val_manipulation = val_manipulation
     self.sequences = sequences
     self.labels = labels
     self.color_map = color_map
@@ -150,6 +152,7 @@ class SemanticKitti(Dataset):
     
     for i in range(len(scan_files_accum)):
         
+        # for NEC_rep in range(0,1+(500*self.val_manipulation)):
         if self.gt:
             self.files.append({
                 "scan": scan_files_accum[i],
@@ -191,7 +194,8 @@ class SemanticKitti(Dataset):
                        fov_up=self.sensor_fov_up,
                        fov_down=self.sensor_fov_down,
                        nuscenes_dataset=self.nuscenes_dataset,
-                       pretrain= self.pretrain)
+                       pretrain= self.pretrain,
+                       val_manipulation= self.val_manipulation)
                        
     # open and obtain scan
     scan.open_scan(scan_file)
@@ -260,60 +264,6 @@ class SemanticKitti(Dataset):
         reduced_proj = reduced_proj * reduced_proj_mask.float()
         
         
-    ################################
-    ### SCAN 2
-    ################################    
-    # open a semantic laserscan
-    if self.pretrain:  
-        if self.gt:
-          scan_2 = SemLaserScan(self.color_map,
-                                  project=True,
-                                  H=self.sensor_img_H,
-                                  W=self.sensor_img_W,
-                                  fov_up=self.sensor_fov_up,
-                                  fov_down=self.sensor_fov_down,
-                                  nuscenes_dataset=self.nuscenes_dataset,
-                                  pretrain= self.pretrain)
-        else:               
-          scan_2 = LaserScan(project=True,
-                               H=self.sensor_img_H,
-                               W=self.sensor_img_W,
-                               fov_up=self.sensor_fov_up,
-                               fov_down=self.sensor_fov_down,
-                               nuscenes_dataset=self.nuscenes_dataset,
-                               pretrain= self.pretrain)
-        
-        scan_2.set_points(scan.points, scan.remissions)#same point cloud
-        
-        
-        # get points and labels
-        proj_range_2 = torch.from_numpy(scan_2.proj_range).clone()
-        proj_xyz_2 = torch.from_numpy(scan_2.proj_xyz).clone()
-        proj_remission_2 = torch.from_numpy(scan_2.proj_remission).clone()
-        proj_mask_2 = torch.from_numpy(scan_2.proj_mask)
-                  
-            
-        proj_2 = torch.cat([proj_range_2.unsqueeze(0).clone(),
-                          proj_xyz_2.clone().permute(2, 0, 1),
-                          proj_remission_2.unsqueeze(0).clone()]) # TO create 4 channels image each channel carry sort of data (range,x,y,z,remission)
-        proj_2 = (proj_2 - self.sensor_img_means[:, None, None]
-                ) / self.sensor_img_stds[:, None, None]
-        proj_2 = proj_2 * proj_mask_2.float()
-        
-        # get points and labels
-        reduced_proj_range_2 = torch.from_numpy(scan_2.reduced_proj_range).clone()
-        reduced_proj_xyz_2 = torch.from_numpy(scan_2.reduced_proj_xyz).clone()
-        reduced_proj_remission_2 = torch.from_numpy(scan_2.reduced_proj_remission).clone()
-        reduced_proj_mask_2 = torch.from_numpy(scan_2.reduced_proj_mask)
-          
-            
-        reduced_proj_2 = torch.cat([reduced_proj_range_2.unsqueeze(0).clone(),
-                          reduced_proj_xyz_2.clone().permute(2, 0, 1),
-                          reduced_proj_remission_2.unsqueeze(0).clone()]) # TO create 4 channels image each channel carry sort of data (range,x,y,z,remission)
-        reduced_proj_2 = (reduced_proj_2 - self.sensor_img_means[:, None, None]
-                ) / self.sensor_img_stds[:, None, None]
-        reduced_proj_2 = reduced_proj_2 * reduced_proj_mask_2.float()
-
     # get name and sequence
     path_norm = os.path.normpath(scan_file)
     path_split = path_norm.split(os.sep)
@@ -327,9 +277,7 @@ class SemanticKitti(Dataset):
     if not self.pretrain:
         return proj, proj_mask, proj_labels, unproj_labels, path_seq, path_name, proj_x, proj_y, proj_range, unproj_range, proj_xyz, unproj_xyz, proj_remission, unproj_remissions, unproj_n_points
     else:
-        return proj, proj_mask, reduced_proj, reduced_proj_mask, scan.rot_ang_around_z_axis, \
-        proj_2, proj_mask_2, reduced_proj_2, reduced_proj_mask_2,\
-        scan_2.rot_ang_around_z_axis, path_seq, path_name
+        return index, proj, proj_mask, reduced_proj, reduced_proj_mask, path_seq, path_name
         
         
   def __len__(self):
@@ -453,6 +401,27 @@ class Parser():
                                                    drop_last=True)
       assert len(self.validloader) > 0
       self.validiter = iter(self.validloader)
+      
+      self.valid_NCE_dataset = SemanticKitti(root=self.root,
+                                       sequences=self.valid_sequences,
+                                       labels=self.labels,
+                                       color_map=self.color_map,
+                                       learning_map=self.learning_map,
+                                       learning_map_inv=self.learning_map_inv,
+                                       sensor=self.sensor,
+                                       max_points=max_points,
+                                       gt=self.gt,
+                                       nuscenes_dataset=self.nuscenes_dataset,
+                                       pretrain=self.pretrain,
+                                       val_manipulation=True)
+
+      self.validloader_NCE = torch.utils.data.DataLoader(self.valid_NCE_dataset,
+                                                   batch_size=self.batch_size,
+                                                   shuffle=False,
+                                                   num_workers=self.workers,
+                                                   pin_memory=True,
+                                                   drop_last=True)
+      assert len(self.validloader_NCE) > 0
 
     if self.test_sequences:
       self.test_dataset = SemanticKitti(root=self.root,
@@ -475,6 +444,9 @@ class Parser():
       assert len(self.testloader) > 0
       self.testiter = iter(self.testloader)
 
+  def get_num_train_scans(self):
+    return self.train_dataset.__len__()
+  
   def get_train_batch(self):
     scans = self.trainiter.next()
     return scans
@@ -488,6 +460,9 @@ class Parser():
 
   def get_valid_set(self):
     return self.validloader
+
+  def get_valid_set_NCE(self):
+    return self.validloader_NCE
 
   def get_test_batch(self):
     scans = self.testiter.next()

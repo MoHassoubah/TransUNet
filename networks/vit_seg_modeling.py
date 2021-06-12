@@ -131,9 +131,7 @@ class Embeddings(nn.Module):
         self.num_tokens = 0
         
         if self.pretrain:
-            self.num_tokens = 2
-            self.rot_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))###>
-            # self.rot_axis_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))###>
+            self.num_tokens = 1
             self.contrastive_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))###>
             self.ext_tok_pos_embeddings = nn.Parameter(torch.zeros(1, self.num_tokens, config.hidden_size))
 
@@ -192,10 +190,8 @@ class Embeddings(nn.Module):
         
         if self.pretrain:
             B=x.shape[0]
-            rot_token = self.rot_token.expand(B, -1, -1) 
-            # rot_axis_token = self.rot_axis_token.expand(B, -1, -1) 
             contrastive_token = self.contrastive_token.expand(B, -1, -1) 
-            x = torch.cat((rot_token,contrastive_token, x), dim=1) ###>
+            x = torch.cat((contrastive_token, x), dim=1) ###>
             all_pos_embeddings = torch.cat((self.ext_tok_pos_embeddings, self.position_embeddings), dim=1) ###>
             embeddings = x + all_pos_embeddings
         else:
@@ -264,7 +260,7 @@ class Block(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, config, vis, pretrain=False):
+    def __init__(self, config, vis, low_dim=512, pretrain=False):
         super(Encoder, self).__init__()
         self.vis = vis
         self.pretrain = pretrain
@@ -277,9 +273,7 @@ class Encoder(nn.Module):
             
         
         if self.pretrain:
-            self.rot_head = nn.Linear(config.hidden_size, 4) ###>
-            # self.rot_axis_head = nn.Linear(config.hidden_size, 1) ###>
-            self.contrastive_head = nn.Linear(config.hidden_size, 512) ###>
+            self.contrastive_head = nn.Linear(config.hidden_size, low_dim) ###>
             
 
     def forward(self, hidden_states):
@@ -290,29 +284,27 @@ class Encoder(nn.Module):
                 attn_weights.append(weights)
         encoded = self.encoder_norm(hidden_states)
         if self.pretrain:
-            x_rot = self.rot_head(encoded[:, 0])
-            # x_rot_axis = self.rot_axis_head(encoded[:, 1])
-            x_contrastive = self.contrastive_head(encoded[:, 1])###>
+            x_contrastive = self.contrastive_head(encoded[:, 0])###>
             
-            return x_rot, x_contrastive, encoded[:, 2:], attn_weights
+            return x_contrastive, encoded[:, 1:], attn_weights
             
         return encoded, attn_weights
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis,pretrain=False):
+    def __init__(self, config, img_size, vis, low_dim=512,pretrain=False):
         super(Transformer, self).__init__()
         self.pretrain = pretrain
             
         self.embeddings = Embeddings(config, img_size=img_size,pretrain=pretrain)
-        self.encoder = Encoder(config, vis,pretrain=pretrain)
+        self.encoder = Encoder(config, vis,low_dim=low_dim, pretrain=pretrain)
 
     def forward(self, input_ids):
         embedding_output, features,bfr_flat_size_2,bfr_flat_size_3 = self.embeddings(input_ids)
         # hybrid_output = embedding_output
         if self.pretrain:
-            x_rot, x_contrastive, encoded, attn_weights = self.encoder(embedding_output)
-            return x_rot, x_contrastive, encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
+            x_contrastive, encoded, attn_weights = self.encoder(embedding_output)
+            return x_contrastive, encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
             
         encoded, attn_weights = self.encoder(embedding_output)  # (B, n_patch, hidden)
         # encoded =  torch.cat([encoded , hybrid_output], dim=2)
@@ -437,15 +429,15 @@ class DecoderCup(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, pretrain=False):
+    def __init__(self, config, img_size=224, num_classes=21843, low_dim=512, zero_head=False, vis=False, pretrain=False):
         super(VisionTransformer, self).__init__()
         self.pretrain = pretrain
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
-        self.transformer = Transformer(config, img_size, vis,pretrain=pretrain)
+        self.transformer = Transformer(config, img_size, vis,low_dim=low_dim,pretrain=pretrain)
         if self.pretrain:
-            self.decoder = DecoderCup(config)
+            pass#self.decoder = DecoderCup(config)
         else:
             self.decoder_finetune = DecoderCup(config)
         if pretrain:
@@ -456,8 +448,6 @@ class VisionTransformer(nn.Module):
             )
             
             # create learnable parameters for the MTL task
-            self.rot_w = nn.Parameter(torch.tensor([1.0]))###>
-            # self.rot_axis_w = nn.Parameter(torch.tensor([1.0]))###>
             self.contrastive_w = nn.Parameter(torch.tensor([1.0]))###>
             self.recons_w = nn.Parameter(torch.tensor([1.0]))###>
         else:
@@ -474,18 +464,18 @@ class VisionTransformer(nn.Module):
             x = x.repeat(1,3,1,1)# 1st size of x is repeated by 1, 2nd size of x is repeated by 3, 3rd and 4th size of x is repeated by 1
             
         if self.pretrain:
-            x_rot, x_contrastive, x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
+            x_contrastive, x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
         else:
             x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
         # print("x in vision transformer")
         # print(x.size())
         if self.pretrain:
-            x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
+            pass#x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
         else:
             x = self.decoder_finetune(x,bfr_flat_size_2,bfr_flat_size_3, features)
         if self.pretrain:
-            logits = self.recon_head(x)
-            return x_rot, x_contrastive, logits, self.rot_w, self.contrastive_w, self.recons_w
+            #logits = self.recon_head(x)
+            return x_contrastive, None, self.contrastive_w, self.recons_w
         else:
             logits = self.segmentation_head(x)
             return logits

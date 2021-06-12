@@ -72,6 +72,17 @@ parser.add_argument(
   default='datasets/lidar_dataset/config/arch/sensor_dataset.yaml',
   help='Architecture yaml cfg file. See /config/arch for sample. No default!',
   )
+
+
+parser.add_argument('--low-dim', default=128, type=int,
+                    metavar='D', help='feature dimension')
+parser.add_argument('--nce-k', default=4096, type=int, #default=4096
+                    metavar='K', help='number of negative samples for NCE')
+parser.add_argument('--nce-t', default=3, type=float, 
+                    metavar='T', help='temperature parameter for softmax')
+parser.add_argument('--nce-m', default=0.5, type=float,
+                    help='momentum for non-parametric updates')  
+
 args = parser.parse_args()
 
 def weights_init(m):
@@ -190,7 +201,7 @@ if __name__ == "__main__":
     config_vit.n_skip = args.n_skip
     if args.vit_name.find('R50') != -1:
         config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
-    net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain).cuda()
+    net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes, low_dim=args.low_dim, pretrain=args.pretrain).cuda()
     if args.pretrain:
         net.apply(weights_init)
     else:

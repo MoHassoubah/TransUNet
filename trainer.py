@@ -26,6 +26,81 @@ from losses import MTL_loss
 import cv2
 from matplotlib import pyplot as plt
 
+from NCE.NCEAverage import NCEAverage
+
+
+def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
+    net.eval()
+    net_time = AverageMeter()
+    cls_time = AverageMeter()
+    losses = AverageMeter()
+    correct = 0.
+    total = 0
+    
+    device = torch.device("cuda")
+    testsize = valLoader.dataset.__len__()
+    valNCEsize = NCE_valLoader.dataset.__len__()
+    
+    trainFeatures=torch.zeros((lower_dim,valNCEsize)).cuda()
+    indicies = torch.zeros(valNCEsize).cuda()
+    print("####################################passed the allocation ")
+    
+    temploader = torch.utils.data.DataLoader(NCE_valLoader.dataset, batch_size=10, shuffle=False, num_workers=1)
+    
+    with torch.no_grad():
+        for batch_idx, batch_data in enumerate(temploader):
+            if batch_idx % 100 == 0:
+                print('%d NCE db iter processd' % batch_idx)
+            
+            (index, image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, path_seq, path_name) =  batch_data
+            
+            reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
+            index = index.cuda()
+            
+            batchSize = reduced_image_batch.size(0)
+            features, _, _, _  = net(reduced_image_batch)#features of the training data with the transform of the testing data
+            trainFeatures[:, batch_idx*batchSize:batch_idx*batchSize+batchSize] = features.data.t()
+            indicies[batch_idx*batchSize:batch_idx*batchSize+batchSize] = index
+        
+        print("####################################pass teh first for loop")
+        end = time.time()
+        for  batch_idx, batch_data in enumerate(valLoader):
+            (index, image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, path_seq, path_name) =  batch_data
+        
+            reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
+            index = index.cuda()
+            
+            batchSize = reduced_image_batch.size(0)
+            features, _, _, _   = net(reduced_image_batch)#features of the training data with the transform of the testing data
+            net_time.update(time.time() - end)
+            end = time.time()
+            #features dim=(batchsize,lower_dim) * trainFeatures dim=(lower_dim,#samples in dataset)-> result dim=(batchsize, #samples in dataset)
+            dist = torch.mm(features, trainFeatures)
+
+            #(values yd, indices yi)
+            yd, yi = dist.topk(1, dim=1, largest=True, sorted=True)#Returns the k largest elements of the given input tensor along a given dimension.
+
+            total += batchSize
+            
+            # start_index = (index*500)+index
+            # correct += torch.logical_and(start_index <= yi, (start_index +500) >=yi).sum().item()
+            correct += index.eq(yi.data).sum().item()
+            
+            cls_time.update(time.time() - end)
+            end = time.time()
+
+            print('Test [{}/{}]\t'
+                  'Net Time {net_time.val:.3f} ({net_time.avg:.3f})\t'
+                  'Cls Time {cls_time.val:.3f} ({cls_time.avg:.3f})\t'
+                  'Top1: {:.2f}'.format(
+                  total, testsize, correct*100./total, net_time=net_time, cls_time=cls_time))
+            # print("index")
+            # print(index)
+            # print("yi.data")
+            # print(yi.data)
+
+    return correct/total
+
 
 
 def get_mpl_colormap(cmap_name):
@@ -118,7 +193,8 @@ def trainer_kitti(args, model, snapshot_path, parser):
                              #worker_init_fn=worker_init_fn) #this gave the error Can't pickle local object 'trainer_synapse.<locals>.worker_init_fn'
     
     ########################                         
-    valid_loader = parser.get_valid_set()
+    valid_loader = parser.get_valid_set()           
+    NCEvalid_loader = parser.get_valid_set_NCE()
     device = torch.device("cuda")
     ignore_classes = [0]
     evaluator = iouEval(parser.get_n_classes(),device, ignore_classes)
@@ -147,7 +223,10 @@ def trainer_kitti(args, model, snapshot_path, parser):
     ######################
     ######################
     if args.pretrain:
-        criterion = MTL_loss(device, args.batch_size)
+        train_data_size = parser.get_num_train_scans()
+        # nce-k 4096 --nce-t 0.07 --nce-m 0.5 --low-dim 128
+        lemniscate = NCEAverage(args.low_dim, train_data_size, args.nce_k, args.nce_t, args.nce_m).cuda()
+        criterion = MTL_loss(device, train_data_size, args.batch_size)
     ######################
     
     if args.n_gpu > 1:
@@ -170,43 +249,23 @@ def trainer_kitti(args, model, snapshot_path, parser):
         for i_batch, batch_data in enumerate(trainloader):
         
             if args.pretrain:
-                (image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, \
-                rot_ang_around_z_axis_batch, image_batch_2, proj_mask_2, reduced_image_batch_2,\
-                reduced_proj_mask_2, rot_ang_around_z_axis_batch_2,path_seq, path_name) =  batch_data
+                (index, image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, path_seq, path_name) =  batch_data
             
                 image_batch = image_batch.to(device, non_blocking=True)
                 reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
-                rot_ang_around_z_axis_batch = rot_ang_around_z_axis_batch.to(device, non_blocking=True).long()
+                index = index.cuda()
                 
-                
-                image_batch_2 = image_batch_2.to(device, non_blocking=True)
-                reduced_image_batch_2 = reduced_image_batch_2.to(device, non_blocking=True) # Apply distortion
-                rot_ang_around_z_axis_batch_2 = rot_ang_around_z_axis_batch_2.to(device, non_blocking=True).long()
                 
                 with torch.cuda.amp.autocast():
                 
-                    rot_prd, contrastive_prd, recon_prd, rot_w, contrastive_w, recons_w = model(reduced_image_batch)
-                    rot_prd_2, contrastive_prd_2, recon_prd_2, _, _, _                         = model(reduced_image_batch_2)
-                        
-                    rot_p = torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)
-                    rots = torch.cat([rot_ang_around_z_axis_batch, rot_ang_around_z_axis_batch_2], dim=0) 
-                    # rots = rots.type_as(rot_p)
+                    contrastive_prd, recon_prd, contrastive_w, recons_w = model(reduced_image_batch)
                     
-                    # print("target rots")
-                    # print(rots.shape)
-                    # print(rots.dtype)
+                    output_P_i_v = lemniscate(contrastive_prd, index)
                     
-                    # print("predicted rots")
-                    # print(rot_p.shape)
+                    loss, (loss1, loss2, loss3) = criterion(output_P_i_v, index,
+                                                            recon_prd, image_batch, contrastive_w, recons_w )
                     
-                    imgs_recon = torch.cat([recon_prd, recon_prd_2], dim=0) 
-                    imgs = torch.cat([image_batch, image_batch_2], dim=0) 
-                    
-                    loss, (loss1, loss2, loss3) = criterion(rot_p, rots, 
-                                                                contrastive_prd, contrastive_prd_2, 
-                                                                imgs_recon, imgs, rot_w, contrastive_w, recons_w )
-                    
-                writer.add_scalar('info/loss_rotation', loss1, iter_num)
+                writer.add_scalar('info/loss_NCE', loss1, iter_num)
                 writer.add_scalar('info/loss_contrastive', loss2, iter_num)
                 writer.add_scalar('info/loss_reconstruction', loss3, iter_num)
                 #loss1->rotation loss
@@ -266,6 +325,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 # writer.add_image('train/Prediction', outputs[1, ...] * 50, iter_num)
                 # labs = label_batch[1, ...].unsqueeze(0) * 50
                 # writer.add_image('train/GroundTruth', labs, iter_num)
+
                 
         if not args.pretrain:
             writer.add_scalar('train/iou', iou.avg, epoch_num)
@@ -286,44 +346,15 @@ def trainer_kitti(args, model, snapshot_path, parser):
             
             model.eval()
             with torch.no_grad():
-                
-                for index, batch_data in enumerate(valid_loader):
-                    if index % 100 == 0:
-                        print('%d validation iter processd' % index)
                         
-                    if args.pretrain:
-                        (image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, \
-                        rot_ang_around_z_axis_batch, image_batch_2, proj_mask_2, reduced_image_batch_2,\
-                        reduced_proj_mask_2, rot_ang_around_z_axis_batch_2,path_seq, path_name) =  batch_data
+                if args.pretrain:
                     
-                        image_batch = image_batch.to(device, non_blocking=True)
-                        reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
-                        rot_ang_around_z_axis_batch = rot_ang_around_z_axis_batch.to(device, non_blocking=True).long()
-                        
-                        
-                        image_batch_2 = image_batch_2.to(device, non_blocking=True)
-                        reduced_image_batch_2 = reduced_image_batch_2.to(device, non_blocking=True) # Apply distortion
-                        rot_ang_around_z_axis_batch_2 = rot_ang_around_z_axis_batch_2.to(device, non_blocking=True).long()
-                        
-                        with torch.cuda.amp.autocast():
-                        
-                            rot_prd, contrastive_prd, recon_prd, rot_w, contrastive_w, recons_w = model(reduced_image_batch)
-                            rot_prd_2, contrastive_prd_2, recon_prd_2, _, _, _                         = model(reduced_image_batch_2)
-                                
-                            rot_p = torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)
-                            rots = torch.cat([rot_ang_around_z_axis_batch, rot_ang_around_z_axis_batch_2], dim=0) 
-                            # rots = rots.type_as(rot_p)
-                                                        
-                            imgs_recon = torch.cat([recon_prd, recon_prd_2], dim=0) 
-                            imgs = torch.cat([image_batch, image_batch_2], dim=0) 
-                            
-                            loss, (loss1, loss2, loss3) = criterion(rot_p, rots, 
-                                                                        contrastive_prd, contrastive_prd_2, 
-                                                                        imgs_recon, imgs, rot_w, contrastive_w, recons_w )
-                                                                        
-                        val_losses.update(loss.mean().item(), args.batch_size)
-                            
-                    else:
+                    correct_percentage = NN(epoch_num, model,args.low_dim, NCEvalid_loader, valid_loader)
+                    writer.add_scalar('valid/NCE_val', correct_percentage, epoch_num)
+                else:
+                    for index_val, batch_data in enumerate(valid_loader):
+                        if index_val % 100 == 0:
+                            print('%d validation iter processd' % index_val)
                         (image_batch, proj_mask, label_batch, _, path_seq, path_name, _, _, _, _, _, _, _, _, _) =  batch_data               
                         image_batch, label_batch = image_batch.cuda(), label_batch.cuda(non_blocking=True).long()
                         outputs = model(image_batch)
@@ -337,7 +368,6 @@ def trainer_kitti(args, model, snapshot_path, parser):
                         
                         evaluator.addBatch(argmax, label_batch)
                         
-                if not args.pretrain:    
                     jaccard, class_jaccard = evaluator.getIoU()
                     
                     iou.update(jaccard.item(), args.batch_size)#in_vol.size(0)) 
