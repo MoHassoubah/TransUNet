@@ -29,11 +29,11 @@ class NCEFunction(Function):
         # print(weight.sum())
 
         # inner product
-        x = x.reshape(batchSize, inputSize, 1)
+        x_norm = x.reshape(batchSize, inputSize, 1)
         # with torch.no_grad():
         
         weight_norm = F.normalize(weight, dim=2)
-        x_norm = F.normalize(x, dim=1).data
+        x_norm = F.normalize(x_norm, dim=1).data
         
         out = torch.bmm(weight_norm, x_norm) #v.T * fi->output size should be (batxh_size,K+1,1)
         # print("out1 sum")
@@ -47,7 +47,7 @@ class NCEFunction(Function):
         
         # print("out3 sum")
         # print(out.sum())
-        x = x.reshape(batchSize, inputSize)
+        x_norm = x_norm.reshape(batchSize, inputSize)
 
         # if Z < 0:
             # params[2] = out.mean() * outputSize
@@ -58,7 +58,7 @@ class NCEFunction(Function):
         # print("out sum")
         # print(out.sum())
 
-        self.save_for_backward(x.detach(), memory, y, weight, out, params) #Saves given tensors for a future call to backward()
+        self.save_for_backward(x_norm.data, memory, y, weight_norm, out, params) #Saves given tensors for a future call to backward()
 
         return out
 
