@@ -1,6 +1,7 @@
 import torch
 from torch.autograd import Function
 from torch import nn
+from torch.nn import functional as F
 from NCE.alias_multinomial import AliasMethod
 import math
 
@@ -30,7 +31,11 @@ class NCEFunction(Function):
         # inner product
         x = x.reshape(batchSize, inputSize, 1)
         # with torch.no_grad():
-        out = torch.bmm(weight, x.data) #v.T * fi->output size should be (batxh_size,K+1,1)
+        
+        weight_norm = F.normalize(weight, dim=2)
+        x_norm = F.normalize(x, dim=1).data
+        
+        out = torch.bmm(weight_norm, x_norm) #v.T * fi->output size should be (batxh_size,K+1,1)
         # print("out1 sum")
         # print(out.sum())
         # print("T")
@@ -44,12 +49,12 @@ class NCEFunction(Function):
         # print(out.sum())
         x = x.reshape(batchSize, inputSize)
 
-        if Z < 0:
-            params[2] = out.mean() * outputSize
-            Z = params[2].item()
-            print("normalization constant Z is set to {:.1f}".format(Z))
+        # if Z < 0:
+            # params[2] = out.mean() * outputSize
+            # Z = params[2].item()
+            # print("normalization constant Z is set to {:.1f}".format(Z))
 
-        out.div_(Z).resize_(batchSize, K+1) #P(i|v) 
+        out.resize_(batchSize, K+1) #P(i|v) #out.div_(Z) 
         # print("out sum")
         # print(out.sum())
 

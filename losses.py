@@ -19,7 +19,7 @@ class ContrastiveLoss(nn.Module):
         representations = torch.cat([z_i, z_j], dim=0)
         similarity_matrix = F.cosine_similarity(representations.unsqueeze(1), representations.unsqueeze(0), dim=2)
         
-        sim_ij = torch.diag(similarity_matrix, self.batch_size)#take the diagonal after batch size steps from the diagonal upper the diagonal
+        sim_ij = torch.diag(similarity_matrix, self.batch_size)#take the diagonal after batch size steps from the diagonal, upper the diagonal
         sim_ji = torch.diag(similarity_matrix, -self.batch_size)
         positives = torch.cat([sim_ij, sim_ji], dim=0)
         
