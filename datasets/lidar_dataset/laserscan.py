@@ -233,7 +233,7 @@ class LaserScan:
   def do_cloud_augmentatiion(self):
     aug_points = self.do_translation_augmentation()
     aug_points = self.do_random_scaling(aug_points)
-    aug_points = self.do_random_flip_x_y_axis(aug_points)
+    # aug_points = self.do_random_flip_x_y_axis(aug_points)
     aug_points = self.do_random_z_axis_rotation(aug_points)
     # if self.val_manipulation:
         # aug_points = self.do_random_x_y_axis_rotation(aug_points)
@@ -270,9 +270,9 @@ class LaserScan:
     fov_down = self.proj_fov_down / 180.0 * np.pi  # field of view down in rad
     
     
-    if self.pretrain and self.val_manipulation:
-        fov_up = self.proj_fov_down / 180.0 * np.pi      # field of view up in rad
-        fov_down = self.proj_fov_up / 180.0 * np.pi  # field of view down in rad
+    # if self.pretrain and self.val_manipulation:
+        # fov_up = self.proj_fov_down / 180.0 * np.pi      # field of view up in rad
+        # fov_down = self.proj_fov_up / 180.0 * np.pi  # field of view down in rad
     
         
     fov = abs(fov_down) + abs(fov_up)  # get field of view total in rad
