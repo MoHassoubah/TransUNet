@@ -55,10 +55,6 @@ class LearnedLoss():
     def calculate_loss(self, output, label_or_index):
         return self.lossF(output, label_or_index)
         
-    
-    def calculate_NCE_loss(self, output,Z, label_or_index):
-        return self.lossF(output,Z, label_or_index)
-        
 
     def calculate_weighted_loss(self, loss, _s):
         w_loss =  (self.adj * torch.exp(-_s) * loss) + (0.5 * _s) #_s is log(std^2)
@@ -73,7 +69,7 @@ class MTLLOSS():
         self._loss_funcs = loss_funcs
         self.device = device
 
-    def __call__(self, output_contrastive,Z, index,
+    def __call__(self, output_contrastive, index,
                  output_recons, target_recons,contrastive_w, reconstruction_w):
         """Returns (overall loss, [seperate task losses])"""
 
@@ -81,7 +77,7 @@ class MTLLOSS():
         # cn_loss = self._loss_funcs[1].calculate_loss(output_contrastive, target_contrastive)        
         # contrastive_loss = self._loss_funcs[1].calculate_weighted_loss(cn_loss, contrastive_w) 
         
-        nce_loss = self._loss_funcs[2].calculate_NCE_loss(output_contrastive,Z, index)     
+        nce_loss = self._loss_funcs[2].calculate_loss(output_contrastive, index)     
         # w_nce_loss = self._loss_funcs[2].calculate_weighted_loss(nce_loss, nce_w) 
                 
         # rec_loss = self._loss_funcs[1].calculate_loss(output_recons, target_recons)

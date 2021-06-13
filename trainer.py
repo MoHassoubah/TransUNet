@@ -260,9 +260,9 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 
                     contrastive_prd, recon_prd, contrastive_w, recons_w = model(image_batch)
                     
-                    output_P_i_v,Z = lemniscate(contrastive_prd, index)
+                    output_P_i_v = lemniscate(contrastive_prd, index)
                     
-                    loss, (loss1, loss2, loss3) = criterion(output_P_i_v,Z, index,
+                    loss, (loss1, loss2, loss3) = criterion(output_P_i_v, index,
                                                             recon_prd, image_batch, contrastive_w, recons_w )
                     
                 writer.add_scalar('info/loss_NCE', loss1, iter_num)

@@ -45,38 +45,38 @@ class NCEFunction(Function):
         x = x.reshape(batchSize, inputSize)
 
         
-        # print("end of forward p(i|v)-1")
-        # print(out[0,0])
-        # print("end of forward p(i|v')-1")
-        # print(out[0,8:13])
-        # print()
-        # print()
+        print("end of forward p(i|v)-1")
+        print(out[0,0])
+        print("end of forward p(i|v')-1")
+        print(out[0,1:].max())
+        print()
+        print()
         if Z < 0:
-            params[2] = out.mean() * outputSize
+            params[2] = out.sum()#out.mean() * outputSize
             Z = params[2].item()
             print("normalization constant Z is set to {:.1f}".format(Z))
 
-        out.resize_(batchSize, K+1) #P(i|v) #out.div_(Z)
+        out.div_(Z).resize_(batchSize, K+1) #P(i|v) #out.div_(Z)
         # print("out sum")
         # print(out.sum())
 
-        self.save_for_backward(x.detach(), memory, y, weight, out, params, Z) #Saves given tensors for a future call to backward()
+        self.save_for_backward(x.detach(), memory, y, weight, out, params) #Saves given tensors for a future call to backward()
         
-        # print("end of forward p(i|v)")
-        # print(out[0,0])
-        # print("end of forward p(i|v')")
-        # print(out[0,8:13])
-        # print("Z")
-        # print(Z)
+        print("end of forward p(i|v)")
+        print(out[0,0])
+        print("end of forward p(i|v')")
+        print(out[0,1:].max())
+        print("Z")
+        print(Z)
 
-        return out,Z
+        return out
 
     @staticmethod
-    def backward(self, gradOutput):
+    def backward(self, gradOutput): #this calculates the derivative of the output wrt x
         # gradOutput is the gradient output before this backward
         # grad_output is the gradient of the loss w.r.t. the layer output.
         # So if you have a layer l and do, say, y = l(x) ; loss = y.sum(); loss.backward(), you get the gradient of loss w.r.t. y.
-        x, memory, y, weight, out, params, Z = self.saved_tensors
+        x, memory, y, weight, out, params = self.saved_tensors
         K = int(params[0].item())
         T = params[1].item()
         Z = params[2].item()
