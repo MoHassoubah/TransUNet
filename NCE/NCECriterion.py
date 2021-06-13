@@ -9,11 +9,11 @@ class NCECriterion(nn.Module):
         super(NCECriterion, self).__init__()
         self.nLem =  nLem#number of data samples
 
-    def forward(self, x, targets):
+    def forward(self, x,Z, targets):
         batchSize = x.size(0)
         K = x.size(1)-1 #number of -ve samples
-        Pnt = 1 / float(self.nLem) # 1/n->Pn(i) noise distribution as a uniform distribution
-        Pns = 1 / float(self.nLem)
+        Pnt = Z / float(self.nLem) # 1/n->Pn(i) noise distribution as a uniform distribution
+        Pns = Z / float(self.nLem)
         
         # eq 5.1 : P(origin=model) = Pmt / (Pmt + k*Pnt) 
         # x size is (batchSize , K+1)

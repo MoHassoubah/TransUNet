@@ -51,7 +51,7 @@ class LaserScan:
     
     
     ######################################
-    if self.pretrain:
+    if self.val_manipulation:#pretrain:
         self.indicies_remained_aft_drop = np.zeros((0, 1), dtype=np.int32)    # [m ,1]: indicies_remained_aft_drop
         
         self.reduced_proj_range = np.full((self.proj_H, self.proj_W), -1,
@@ -142,13 +142,13 @@ class LaserScan:
     else:
       self.remissions = np.zeros((points.shape[0]), dtype=np.float32)
       
-    if self.pretrain:
+    if self.val_manipulation:#self.pretrain:
         aug_points = self.do_cloud_augmentatiion()
         self.drop_x_percent_frm_pntcloud()
 
     # if projection is wanted, then do it and fill in the structure
     if self.project:
-        if self.pretrain:    
+        if self.val_manipulation:#pretrain:    
             proj_y, proj_x, depth, ret_points, ret_remission, indices = self.do_range_projection(param_aug_points = aug_points)
         else:
             proj_y, proj_x, depth, ret_points, ret_remission, indices = self.do_range_projection()
@@ -159,7 +159,7 @@ class LaserScan:
         self.proj_idx[proj_y, proj_x] = indices
         self.proj_mask = (self.proj_idx > 0).astype(np.int32)
         
-        if self.pretrain:
+        if self.val_manipulation:#pretrain:
             proj_y, proj_x, depth, ret_points, ret_remission, indices = self.do_range_projection(True,param_aug_points = aug_points)
             
             self.reduced_proj_range[proj_y, proj_x] = depth
@@ -254,7 +254,7 @@ class LaserScan:
         if the value of the constructor was not set (in case you change your
         mind about wanting the projection)
     """
-    if self.pretrain:
+    if self.val_manipulation:#pretrain:
         if drop_pnts:
             pointcloud = param_aug_points[self.indicies_remained_aft_drop]
             pnt_remission = self.remissions[self.indicies_remained_aft_drop]
@@ -270,9 +270,9 @@ class LaserScan:
     fov_down = self.proj_fov_down / 180.0 * np.pi  # field of view down in rad
     
     
-    if self.pretrain and self.val_manipulation:
-        fov_up = self.proj_fov_down / 180.0 * np.pi      # field of view up in rad
-        fov_down = self.proj_fov_up / 180.0 * np.pi  # field of view down in rad
+    # if self.pretrain and self.val_manipulation:
+        # fov_up = self.proj_fov_down / 180.0 * np.pi      # field of view up in rad
+        # fov_down = self.proj_fov_up / 180.0 * np.pi  # field of view down in rad
     
         
     fov = abs(fov_down) + abs(fov_up)  # get field of view total in rad

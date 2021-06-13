@@ -65,13 +65,13 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
         print("####################################pass teh first for loop")
         end = time.time()
         for  batch_idx, batch_data in enumerate(valLoader):
-            (index, image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, path_seq, path_name) =  batch_data
+            (index, image_batch, proj_mask, path_seq, path_name) =  batch_data
         
-            reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
+            image_batch = image_batch.to(device, non_blocking=True) # Apply distortion
             index = index.cuda()
             
-            batchSize = reduced_image_batch.size(0)
-            features, _, _, _   = net(reduced_image_batch)#features of the training data with the transform of the testing data
+            batchSize = image_batch.size(0)
+            features, _, _, _   = net(image_batch)#features of the training data with the transform of the testing data
             net_time.update(time.time() - end)
             end = time.time()
             #features dim=(batchsize,lower_dim) * trainFeatures dim=(lower_dim,#samples in dataset)-> result dim=(batchsize, #samples in dataset)
@@ -249,20 +249,20 @@ def trainer_kitti(args, model, snapshot_path, parser):
         for i_batch, batch_data in enumerate(trainloader):
         
             if args.pretrain:
-                (index, image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, path_seq, path_name) =  batch_data
+                (index, image_batch, proj_mask, path_seq, path_name) =  batch_data
             
                 image_batch = image_batch.to(device, non_blocking=True)
-                reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
+                # reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
                 index = index.cuda()
                 
                 
                 with torch.cuda.amp.autocast():
                 
-                    contrastive_prd, recon_prd, contrastive_w, recons_w = model(reduced_image_batch)
+                    contrastive_prd, recon_prd, contrastive_w, recons_w = model(image_batch)
                     
-                    output_P_i_v = lemniscate(contrastive_prd, index)
+                    output_P_i_v,Z = lemniscate(contrastive_prd, index)
                     
-                    loss, (loss1, loss2, loss3) = criterion(output_P_i_v, index,
+                    loss, (loss1, loss2, loss3) = criterion(output_P_i_v,Z, index,
                                                             recon_prd, image_batch, contrastive_w, recons_w )
                     
                 writer.add_scalar('info/loss_NCE', loss1, iter_num)
