@@ -283,6 +283,10 @@ class Encoder(nn.Module):
             if self.vis:
                 attn_weights.append(weights)
         encoded = self.encoder_norm(hidden_states)
+        
+        # print("############################### check weights if there is a change encoder_norm")
+        # print(self.encoder_norm.weight[0])
+        # print()
         if self.pretrain:
             x_contrastive = self.contrastive_head(encoded[:, 0])###>
             

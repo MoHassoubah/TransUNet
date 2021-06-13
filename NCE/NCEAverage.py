@@ -1,6 +1,7 @@
 import torch
 from torch.autograd import Function
 from torch import nn
+from torch.nn import functional as F
 from NCE.alias_multinomial import AliasMethod
 import math
 
@@ -28,9 +29,10 @@ class NCEFunction(Function):
         # print(weight.sum())
 
         # inner product
-        x = x.reshape(batchSize, inputSize, 1)
+        x_norm = x.reshape(batchSize, inputSize, 1)
+        x_norm = F.normalize(x_norm, dim=1).data
         # with torch.no_grad():
-        out = torch.bmm(weight, x.data) #v.T * fi->output size should be (batxh_size,K+1,1)
+        out = torch.bmm(weight, x_norm.data) #v.T * fi->output size should be (batxh_size,K+1,1)
         # print("out1 sum")
         # print(out.sum())
         # print("T")
@@ -42,17 +44,17 @@ class NCEFunction(Function):
         
         # print("out3 sum")
         # print(out.sum())
-        x = x.reshape(batchSize, inputSize)
+        x_norm = x_norm.reshape(batchSize, inputSize)
 
         
-        print("end of forward p(i|v)-1")
-        print(out[0,0])
-        print("end of forward p(i|v')-1")
-        print(out[0,1:].max())
-        print()
-        print()
+        # print("end of forward p(i|v)-1")
+        # print(out[0,0])
+        # print("end of forward p(i|v')-1")
+        # print(out[0,1:].max())
+        # print()
+        # print()
         if Z < 0:
-            params[2] = out.sum()#out.mean() * outputSize
+            params[2] = out.mean() * outputSize
             Z = params[2].item()
             print("normalization constant Z is set to {:.1f}".format(Z))
 
@@ -60,14 +62,14 @@ class NCEFunction(Function):
         # print("out sum")
         # print(out.sum())
 
-        self.save_for_backward(x.detach(), memory, y, weight, out, params) #Saves given tensors for a future call to backward()
+        self.save_for_backward(x_norm.data, memory, y, weight, out, params) #Saves given tensors for a future call to backward()
         
-        print("end of forward p(i|v)")
-        print(out[0,0])
-        print("end of forward p(i|v')")
-        print(out[0,1:].max())
-        print("Z")
-        print(Z)
+        # print("end of forward p(i|v)")
+        # print(out[0,0])
+        # print("end of forward p(i|v')")
+        # print(out[0,1:].max())
+        # print("Z")
+        # print(Z)
 
         return out
 

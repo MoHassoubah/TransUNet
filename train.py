@@ -78,7 +78,7 @@ parser.add_argument('--low-dim', default=128, type=int,
                     metavar='D', help='feature dimension')
 parser.add_argument('--nce-k', default=4096, type=int, #default=4096
                     metavar='K', help='number of negative samples for NCE')
-parser.add_argument('--nce-t', default=3, type=float, 
+parser.add_argument('--nce-t', default=0.7, type=float, 
                     metavar='T', help='temperature parameter for softmax')
 parser.add_argument('--nce-m', default=0.5, type=float,
                     help='momentum for non-parametric updates')  
