@@ -49,16 +49,17 @@ class NCEFunction(Function):
         # print(out.sum())
         x_norm = x_norm.reshape(batchSize, inputSize)
 
-        # if Z < 0:
-            # params[2] = out.mean() * outputSize
-            # Z = params[2].item()
-            # print("normalization constant Z is set to {:.1f}".format(Z))
+        if Z < 0:
+            params[2] = out.mean() * outputSize
+            Z = params[2].item()
+            print("normalization constant Z is set to {:.1f}".format(Z))
 
-        out.resize_(batchSize, K+1) #P(i|v) #out.div_(Z) 
+        out.div_(Z).resize_(batchSize, K+1) #P(i|v) #out.div_(Z) 
         # print("out sum")
         # print(out.sum())
 
         self.save_for_backward(x_norm.data, memory, y, weight_norm, out, params) #Saves given tensors for a future call to backward()
+        
 
         return out
 
@@ -113,5 +114,6 @@ class NCEAverage(nn.Module):
         batchSize = x.size(0)
         idx = self.multinomial.draw(batchSize * (self.K+1)).view(batchSize, -1)
         out = NCEFunction.apply(x, y, self.memory, idx, self.params)
+        
         return out
 

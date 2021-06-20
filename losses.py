@@ -1,3 +1,4 @@
+import logging
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -44,6 +45,9 @@ class LearnedLoss():
         elif losstype == 'L1':
             self.lossF = torch.nn.L1Loss()
             self.adj = 0.5
+        elif losstype == 'L2':
+            self.lossF = torch.nn.MSELoss()
+            self.adj = 0.5
         elif losstype == 'Contrastive':
             self.lossF = ContrastiveLoss(batch_size)
             self.adj = 1
@@ -58,10 +62,10 @@ class LearnedLoss():
 
     def calculate_weighted_loss(self, loss, _s):
         w_loss =  (self.adj * torch.exp(-_s) * loss) + (0.5 * _s) #_s is log(std^2)
-        if w_loss.item()>0:
-            return w_loss
-        else:
-            return w_loss*0
+        # if w_loss.item()>0:
+        return w_loss
+        # else:
+            # return w_loss*0
     
 class MTLLOSS():
     def __init__(self, loss_funcs, device):
@@ -70,23 +74,32 @@ class MTLLOSS():
         self.device = device
 
     def __call__(self, output_contrastive, index,
-                 output_recons, target_recons,contrastive_w, reconstruction_w):
+                 output_recons, target_recons,nce_w, reconstruction_w, contrastive_prd, weight_prev_cycle, nce_converge_w):
         """Returns (overall loss, [seperate task losses])"""
 
         
-        # cn_loss = self._loss_funcs[1].calculate_loss(output_contrastive, target_contrastive)        
-        # contrastive_loss = self._loss_funcs[1].calculate_weighted_loss(cn_loss, contrastive_w) 
+        # cn_loss = self._loss_funcs[0].calculate_loss(output_contrastive, target_contrastive)        
+        # contrastive_loss = self._loss_funcs[0].calculate_weighted_loss(cn_loss, contrastive_w) 
         
         nce_loss = self._loss_funcs[2].calculate_loss(output_contrastive, index)     
-        # w_nce_loss = self._loss_funcs[2].calculate_weighted_loss(nce_loss, nce_w) 
+        w_nce_loss = self._loss_funcs[2].calculate_weighted_loss(nce_loss, nce_w) 
                 
-        # rec_loss = self._loss_funcs[1].calculate_loss(output_recons, target_recons)
-        # reconstruction_loss = self._loss_funcs[1].calculate_weighted_loss(rec_loss, reconstruction_w) 
+        rec_loss = self._loss_funcs[1].calculate_loss(output_recons, target_recons)
+        reconstruction_loss = self._loss_funcs[1].calculate_weighted_loss(rec_loss, reconstruction_w) 
+        
+        norm_contrastive_prd= F.normalize(contrastive_prd, dim=1)
+        convergence_loss = self._loss_funcs[3].calculate_loss(norm_contrastive_prd, weight_prev_cycle)
+        w_convergence_loss = 30*convergence_loss#self._loss_funcs[3].calculate_weighted_loss(convergence_loss, nce_converge_w) 
                 
+        reg_term = torch.pow(contrastive_prd,2).sum()#torch.pow(norm_contrastive_prd, 2)   
+        reg_loss=1./reg_term
+        
         # total_loss = contrastive_loss + reconstruction_loss
-        total_loss = nce_loss #+ reconstruction_loss
-        # print("********"+"reconstruction_loss=  "+str(reconstruction_loss.item()))
-        return total_loss, (nce_loss, torch.tensor(0), torch.tensor(0))
+        total_loss = w_nce_loss + reconstruction_loss + w_convergence_loss + (30*reg_loss)
+        
+        logging.info('w_nce_loss : %f,******** w_convergence_loss : %f, ******** reconstruction_loss : %f' % (w_nce_loss.item(), \
+                w_convergence_loss.item(), reconstruction_loss.item()))
+        return total_loss, (nce_loss, convergence_loss, rec_loss)
 
     
 def MTL_loss(device, ndata, batch_size):
@@ -95,6 +108,7 @@ def MTL_loss(device, ndata, batch_size):
     task_contrastive  = LearnedLoss('Contrastive', batch_size=batch_size) 
     task_recons = LearnedLoss('L1') 
     task_NCE = LearnedLoss('NCE', ndata=ndata) 
-    return MTLLOSS([task_contrastive, task_recons, task_NCE], device)
+    task_nce_converge = LearnedLoss('L2') 
+    return MTLLOSS([task_contrastive, task_recons, task_NCE,task_nce_converge], device)
 
         

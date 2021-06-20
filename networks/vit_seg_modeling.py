@@ -437,7 +437,7 @@ class VisionTransformer(nn.Module):
         self.classifier = config.classifier
         self.transformer = Transformer(config, img_size, vis,low_dim=low_dim,pretrain=pretrain)
         if self.pretrain:
-            pass#self.decoder = DecoderCup(config)
+            self.decoder = DecoderCup(config)
         else:
             self.decoder_finetune = DecoderCup(config)
         if pretrain:
@@ -450,6 +450,7 @@ class VisionTransformer(nn.Module):
             # create learnable parameters for the MTL task
             self.contrastive_w = nn.Parameter(torch.tensor([1.0]))###>
             self.recons_w = nn.Parameter(torch.tensor([1.0]))###>
+            self.nce_converge_w = nn.Parameter(torch.tensor([1.0]))###>
         else:
             self.segmentation_head = SegmentationHead(
                 in_channels=config['decoder_channels'][-1],
@@ -470,12 +471,12 @@ class VisionTransformer(nn.Module):
         # print("x in vision transformer")
         # print(x.size())
         if self.pretrain:
-            pass#x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
+            x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
         else:
             x = self.decoder_finetune(x,bfr_flat_size_2,bfr_flat_size_3, features)
         if self.pretrain:
-            #logits = self.recon_head(x)
-            return x_contrastive, None, self.contrastive_w, self.recons_w
+            logits = self.recon_head(x)
+            return x_contrastive, logits, self.contrastive_w, self.recons_w, self.nce_converge_w
         else:
             logits = self.segmentation_head(x)
             return logits

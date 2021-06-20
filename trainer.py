@@ -28,6 +28,8 @@ from matplotlib import pyplot as plt
 
 from NCE.NCEAverage import NCEAverage
 
+from torch.nn import functional as F
+
 
 def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
     net.eval()
@@ -43,6 +45,9 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
     
     trainFeatures=torch.zeros((lower_dim,valNCEsize)).cuda()
     indicies = torch.zeros(valNCEsize).cuda()
+    lossF = torch.nn.L1Loss()
+    
+    val_losses = AverageMeter()
     print("####################################passed the allocation ")
     
     temploader = torch.utils.data.DataLoader(NCE_valLoader.dataset, batch_size=10, shuffle=False, num_workers=1)
@@ -58,7 +63,7 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
             index = index.cuda()
             
             batchSize = reduced_image_batch.size(0)
-            features, _, _, _  = net(reduced_image_batch)#features of the training data with the transform of the testing data
+            features, _, _, _,_  = net(reduced_image_batch)#features of the training data with the transform of the testing data
             trainFeatures[:, batch_idx*batchSize:batch_idx*batchSize+batchSize] = features.data.t()
             indicies[batch_idx*batchSize:batch_idx*batchSize+batchSize] = index
         
@@ -67,11 +72,16 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
         for  batch_idx, batch_data in enumerate(valLoader):
             (index, image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, path_seq, path_name) =  batch_data
         
+            image_batch = image_batch.to(device, non_blocking=True)
             reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
             index = index.cuda()
             
             batchSize = reduced_image_batch.size(0)
-            features, _, _, _   = net(reduced_image_batch)#features of the training data with the transform of the testing data
+            features, recon_prd, _, _ ,_  = net(reduced_image_batch)#features of the training data with the transform of the testing data
+            
+            loss_v = lossF(recon_prd, image_batch)
+            val_losses.update(loss_v.mean().item(), batchSize)
+            
             net_time.update(time.time() - end)
             end = time.time()
             #features dim=(batchsize,lower_dim) * trainFeatures dim=(lower_dim,#samples in dataset)-> result dim=(batchsize, #samples in dataset)
@@ -84,7 +94,9 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
             
             # start_index = (index*500)+index
             # correct += torch.logical_and(start_index <= yi, (start_index +500) >=yi).sum().item()
-            correct += index.eq(yi.data).sum().item()
+            
+            correct += torch.logical_and(index -2 <= yi, (index +2) >=yi).sum().item()
+            # correct += index.eq(yi.data).sum().item()
             
             cls_time.update(time.time() - end)
             end = time.time()
@@ -99,7 +111,7 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
             # print("yi.data")
             # print(yi.data)
 
-    return correct/total
+    return correct*100./total, val_losses
 
 
 
@@ -258,15 +270,28 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 
                 with torch.cuda.amp.autocast():
                 
-                    contrastive_prd, recon_prd, contrastive_w, recons_w = model(reduced_image_batch)
+                    contrastive_prd, recon_prd, contrastive_w, recons_w, nce_converge_w = model(reduced_image_batch)
+                    
+                    batchSize = reduced_image_batch.size(0)
+                    weight_prev_cycle = torch.index_select(lemniscate.memory, 0, index.view(-1))
+                    weight_prev_cycle.resize_(batchSize,args.low_dim)
+                    
+                    w_test =weight_prev_cycle.reshape(batchSize, 1,args.low_dim)
+                    x_norm = contrastive_prd.reshape(batchSize, args.low_dim, 1)
+                    x_norm = F.normalize(x_norm, dim=1).data
+                    out = torch.bmm(w_test, x_norm).squeeze(1).squeeze(1)
                     
                     output_P_i_v = lemniscate(contrastive_prd, index)
                     
                     loss, (loss1, loss2, loss3) = criterion(output_P_i_v, index,
-                                                            recon_prd, image_batch, contrastive_w, recons_w )
-                    
+                                                            recon_prd, image_batch, contrastive_w, recons_w, \
+                                                            contrastive_prd, weight_prev_cycle, nce_converge_w)
+                
+                writer.add_scalar('info/P_i_v', output_P_i_v[:,0].mean().item(), iter_num)  
+                writer.add_scalar('info/P_i_v_dash', output_P_i_v[:,1:].mean().item(), iter_num) 
+                writer.add_scalar('info/vt_x_f', out.mean().item(), iter_num)   
                 writer.add_scalar('info/loss_NCE', loss1, iter_num)
-                writer.add_scalar('info/loss_contrastive', loss2, iter_num)
+                writer.add_scalar('info/loss_convergence', loss2, iter_num)
                 writer.add_scalar('info/loss_reconstruction', loss3, iter_num)
                 #loss1->rotation loss
                 #loss2->rotation axis loss
@@ -325,7 +350,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 # writer.add_image('train/Prediction', outputs[1, ...] * 50, iter_num)
                 # labs = label_batch[1, ...].unsqueeze(0) * 50
                 # writer.add_image('train/GroundTruth', labs, iter_num)
-
+            
                 
         if not args.pretrain:
             writer.add_scalar('train/iou', iou.avg, epoch_num)
@@ -349,7 +374,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
                         
                 if args.pretrain:
                     
-                    correct_percentage = NN(epoch_num, model,args.low_dim, NCEvalid_loader, valid_loader)
+                    correct_percentage,val_losses = NN(epoch_num, model,args.low_dim, NCEvalid_loader, valid_loader)
                     writer.add_scalar('valid/NCE_val', correct_percentage, epoch_num)
                 else:
                     for index_val, batch_data in enumerate(valid_loader):
