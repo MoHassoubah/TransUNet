@@ -270,7 +270,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 
                 with torch.cuda.amp.autocast():
                 
-                    contrastive_prd, recon_prd, contrastive_w, recons_w, nce_converge_w = model(reduced_image_batch)
+                    contrastive_prd, recon_prd, contrastive_w, recons_w, nce_converge_w, nce_reg_w = model(reduced_image_batch)
                     
                     batchSize = reduced_image_batch.size(0)
                     weight_prev_cycle = torch.index_select(lemniscate.memory, 0, index.view(-1))
@@ -285,7 +285,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
                     
                     loss, (loss1, loss2, loss3) = criterion(output_P_i_v, index,
                                                             recon_prd, image_batch, contrastive_w, recons_w, \
-                                                            contrastive_prd, weight_prev_cycle, nce_converge_w)
+                                                            contrastive_prd, weight_prev_cycle, nce_converge_w, nce_reg_w)
                 
                 writer.add_scalar('info/P_i_v', output_P_i_v[:,0].mean().item(), iter_num)  
                 writer.add_scalar('info/P_i_v_dash', output_P_i_v[:,1:].mean().item(), iter_num) 

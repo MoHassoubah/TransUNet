@@ -74,7 +74,7 @@ class MTLLOSS():
         self.device = device
 
     def __call__(self, output_contrastive, index,
-                 output_recons, target_recons,nce_w, reconstruction_w, contrastive_prd, weight_prev_cycle, nce_converge_w):
+                 output_recons, target_recons,nce_w, reconstruction_w, contrastive_prd, weight_prev_cycle, nce_converge_w, nce_reg_w):
         """Returns (overall loss, [seperate task losses])"""
 
         
@@ -89,13 +89,14 @@ class MTLLOSS():
         
         norm_contrastive_prd= F.normalize(contrastive_prd, dim=1)
         convergence_loss = self._loss_funcs[3].calculate_loss(norm_contrastive_prd, weight_prev_cycle)
-        w_convergence_loss = 30*convergence_loss#self._loss_funcs[3].calculate_weighted_loss(convergence_loss, nce_converge_w) 
+        w_convergence_loss = self._loss_funcs[3].calculate_weighted_loss(convergence_loss, nce_converge_w) #30*convergence_loss
                 
         reg_term = torch.pow(contrastive_prd,2).sum()#torch.pow(norm_contrastive_prd, 2)   
         reg_loss=1./reg_term
+        w_reg_loss= self._loss_funcs[0].calculate_weighted_loss(reg_loss, nce_reg_w) 
         
         # total_loss = contrastive_loss + reconstruction_loss
-        total_loss = w_nce_loss + reconstruction_loss + w_convergence_loss + (30*reg_loss)
+        total_loss = w_nce_loss + reconstruction_loss + w_convergence_loss + w_reg_loss#(30*reg_loss)
         
         logging.info('w_nce_loss : %f,******** w_convergence_loss : %f, ******** reconstruction_loss : %f' % (w_nce_loss.item(), \
                 w_convergence_loss.item(), reconstruction_loss.item()))
