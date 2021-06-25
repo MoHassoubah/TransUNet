@@ -95,8 +95,8 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
             # start_index = (index*500)+index
             # correct += torch.logical_and(start_index <= yi, (start_index +500) >=yi).sum().item()
             
-            correct += torch.logical_and(index -2 <= yi, (index +2) >=yi).sum().item()
-            # correct += index.eq(yi.data).sum().item()
+            # correct += torch.logical_and(index -2 <= yi, (index +2) >=yi).sum().item()
+            correct += index.eq(yi.data).sum().item()
             
             cls_time.update(time.time() - end)
             end = time.time()
@@ -259,7 +259,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
         iou = AverageMeter()
         
         for i_batch, batch_data in enumerate(trainloader):
-        
+            break
             if args.pretrain:
                 (index, image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, path_seq, path_name) =  batch_data
             
