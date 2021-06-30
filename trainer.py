@@ -79,7 +79,7 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
             batchSize = reduced_image_batch.size(0)
             features, recon_prd, _, _ ,_  = net(reduced_image_batch)#features of the training data with the transform of the testing data
             
-            loss_v = lossF(recon_prd, image_batch)
+            loss_v = torch.tensor(0.)#lossF(recon_prd, image_batch)
             val_losses.update(loss_v.mean().item(), batchSize)
             
             net_time.update(time.time() - end)
@@ -95,7 +95,7 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
             # start_index = (index*500)+index
             # correct += torch.logical_and(start_index <= yi, (start_index +500) >=yi).sum().item()
             
-            correct += torch.logical_and(index -2 <= yi, (index +2) >=yi).sum().item()
+            correct += torch.logical_and(index -1 <= yi, (index +1) >=yi).sum().item()
             # correct += index.eq(yi.data).sum().item()
             
             cls_time.update(time.time() - end)
@@ -247,7 +247,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
     # dice_loss = DiceLoss(num_classes)
     optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
     writer = SummaryWriter(snapshot_path + '/log')
-    iter_num = 0
+    iter_num = 211901
     max_epoch = args.max_epochs
     max_iterations = args.max_epochs * len(trainloader)  # max_epoch = max_iterations // len(trainloader) + 1
     logging.info("{} iterations per epoch. {} max iterations ".format(len(trainloader), max_iterations))
@@ -292,7 +292,8 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 writer.add_scalar('info/vt_x_f', out.mean().item(), iter_num)   
                 writer.add_scalar('info/loss_NCE', loss1, iter_num)
                 writer.add_scalar('info/loss_convergence', loss2, iter_num)
-                writer.add_scalar('info/loss_reconstruction', loss3, iter_num)
+                writer.add_scalar('info/loss_regularization', loss3, iter_num)
+                # writer.add_scalar('info/loss_reconstruction', loss3, iter_num)
                 #loss1->rotation loss
                 #loss2->rotation axis loss
                 #loss3->contrastive loss

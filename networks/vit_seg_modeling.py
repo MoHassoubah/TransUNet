@@ -437,7 +437,8 @@ class VisionTransformer(nn.Module):
         self.classifier = config.classifier
         self.transformer = Transformer(config, img_size, vis,low_dim=low_dim,pretrain=pretrain)
         if self.pretrain:
-            self.decoder = DecoderCup(config)
+            pass
+            # self.decoder = DecoderCup(config)
         else:
             self.decoder_finetune = DecoderCup(config)
         if pretrain:
@@ -471,12 +472,13 @@ class VisionTransformer(nn.Module):
         # print("x in vision transformer")
         # print(x.size())
         if self.pretrain:
-            x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
+            pass
+            # x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
         else:
             x = self.decoder_finetune(x,bfr_flat_size_2,bfr_flat_size_3, features)
         if self.pretrain:
-            logits = self.recon_head(x)
-            return x_contrastive, logits, self.contrastive_w, self.recons_w, self.nce_converge_w
+            # logits = self.recon_head(x)
+            return x_contrastive, None, self.contrastive_w, self.recons_w, self.nce_converge_w
         else:
             logits = self.segmentation_head(x)
             return logits

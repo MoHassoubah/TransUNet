@@ -15,7 +15,7 @@ import yaml
 
 
 DATA_DIRECTORY = 'C:\lidar_datasets\kitti_data'     #'./data/GTA5' #should be the path of the kitti LiDAR data
-RESTORE_FROM_DIRECTORY = 'C:\msc_codes\proj_tansUnet\model\TU_Kitti64x1024\TU_pretrain_R50-ViT-B_16_skip3_epo150_bs3_64x1024'
+RESTORE_FROM_DIRECTORY = 'C:\msc_codes\proj_tansUnet\model\TU_Kitti64x1024\TU_pretrain_R50-ViT-B_16_skip3_epo150_bs7_64x1024'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
@@ -74,7 +74,7 @@ parser.add_argument(
   )
 
 
-parser.add_argument('--low-dim', default=300, type=int,
+parser.add_argument('--low-dim', default=512, type=int,
                     metavar='D', help='feature dimension')
 parser.add_argument('--nce-k', default=4096, type=int, #default=4096
                     metavar='K', help='number of negative samples for NCE')
@@ -203,11 +203,20 @@ if __name__ == "__main__":
         config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
     net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes, low_dim=args.low_dim, pretrain=args.pretrain).cuda()
     if args.pretrain:
-        net.apply(weights_init)
+        # net.apply(weights_init)
+        #################
+        new_params = net.state_dict().copy()
+        saved_state_dict = torch.load(RESTORE_FROM_DIRECTORY + '\\' +args.restore_from+'.pth')
+
+        saved_state_dict = {k: v for k, v in saved_state_dict.items() if k in new_params}
+        new_params.update(saved_state_dict) 
+        
+        net.load_state_dict(new_params)
+        ################
     else:
         # net.load_from(weights=np.load(config_vit.pretrained_path))
         
-        net.apply(weights_init)
+        # net.apply(weights_init)
         #################
         new_params = net.state_dict().copy()
         saved_state_dict = torch.load(RESTORE_FROM_DIRECTORY + '\\' +args.restore_from+'.pth')

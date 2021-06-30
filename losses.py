@@ -84,8 +84,8 @@ class MTLLOSS():
         nce_loss = self._loss_funcs[2].calculate_loss(output_contrastive, index)     
         w_nce_loss = self._loss_funcs[2].calculate_weighted_loss(nce_loss, nce_w) 
                 
-        rec_loss = self._loss_funcs[1].calculate_loss(output_recons, target_recons)
-        reconstruction_loss = self._loss_funcs[1].calculate_weighted_loss(rec_loss, reconstruction_w) 
+        # rec_loss = self._loss_funcs[1].calculate_loss(output_recons, target_recons)
+        # reconstruction_loss = self._loss_funcs[1].calculate_weighted_loss(rec_loss, reconstruction_w) 
         
         norm_contrastive_prd= F.normalize(contrastive_prd, dim=1)
         convergence_loss = self._loss_funcs[3].calculate_loss(norm_contrastive_prd, weight_prev_cycle)
@@ -95,11 +95,13 @@ class MTLLOSS():
         reg_loss=1./reg_term
         
         # total_loss = contrastive_loss + reconstruction_loss
-        total_loss = w_nce_loss + reconstruction_loss + w_convergence_loss + (30*reg_loss)
+        # total_loss = w_nce_loss + reconstruction_loss + w_convergence_loss + (30*reg_loss)
+        total_loss = w_nce_loss + w_convergence_loss + (30*reg_loss)
         
-        logging.info('w_nce_loss : %f,******** w_convergence_loss : %f, ******** reconstruction_loss : %f' % (w_nce_loss.item(), \
-                w_convergence_loss.item(), reconstruction_loss.item()))
-        return total_loss, (nce_loss, convergence_loss, rec_loss)
+        # logging.info('w_nce_loss : %f,******** w_convergence_loss : %f, ******** reconstruction_loss : %f' % (w_nce_loss.item(), \
+                # w_convergence_loss.item(), reconstruction_loss.item()))
+        logging.info('w_convergence_loss : %f' % (w_convergence_loss.item()))
+        return total_loss, (nce_loss, convergence_loss, reg_loss)
 
     
 def MTL_loss(device, ndata, batch_size):
