@@ -237,7 +237,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
     if args.pretrain:
         train_data_size = parser.get_num_train_scans()
         # nce-k 4096 --nce-t 0.07 --nce-m 0.5 --low-dim 128
-        lemniscate = NCEAverage(args.low_dim, train_data_size, args.nce_k, args.nce_t, args.nce_m).cuda()
+        lemniscate = NCEAverage(args.low_dim, 256*train_data_size, args.nce_k, args.nce_t, args.nce_m).cuda()
         criterion = MTL_loss(device, train_data_size, args.batch_size)
     ######################
     
@@ -272,6 +272,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 
                     contrastive_prd, recon_prd, contrastive_w, recons_w, nce_converge_w = model(reduced_image_batch)
                     
+                    #################
                     batchSize = reduced_image_batch.size(0)
                     weight_prev_cycle = torch.index_select(lemniscate.memory, 0, index.view(-1))
                     weight_prev_cycle.resize_(batchSize,args.low_dim)
@@ -280,6 +281,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
                     x_norm = contrastive_prd.reshape(batchSize, args.low_dim, 1)
                     x_norm = F.normalize(x_norm, dim=1).data
                     out = torch.bmm(w_test, x_norm).squeeze(1).squeeze(1)
+                    ################
                     
                     output_P_i_v = lemniscate(contrastive_prd, index)
                     

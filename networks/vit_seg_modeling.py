@@ -132,8 +132,8 @@ class Embeddings(nn.Module):
         
         if self.pretrain:
             self.num_tokens = 1
-            self.contrastive_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))###>
-            self.ext_tok_pos_embeddings = nn.Parameter(torch.zeros(1, self.num_tokens, config.hidden_size))
+            # self.contrastive_token = nn.Parameter(torch.zeros(1, 1, config.hidden_size))###>
+            # self.ext_tok_pos_embeddings = nn.Parameter(torch.zeros(1, self.num_tokens, config.hidden_size))
 
         if config.patches.get("grid") is not None:   # ResNet
             grid_size = config.patches["grid"]
@@ -188,14 +188,14 @@ class Embeddings(nn.Module):
         # print(" self.position_embeddings")
         # print( self.position_embeddings.shape)
         
-        if self.pretrain:
-            B=x.shape[0]
-            contrastive_token = self.contrastive_token.expand(B, -1, -1) 
-            x = torch.cat((contrastive_token, x), dim=1) ###>
-            all_pos_embeddings = torch.cat((self.ext_tok_pos_embeddings, self.position_embeddings), dim=1) ###>
-            embeddings = x + all_pos_embeddings
-        else:
-            embeddings = x + self.position_embeddings
+        # if self.pretrain:
+            # B=x.shape[0]
+            # # contrastive_token = self.contrastive_token.expand(B, -1, -1) 
+            # # x = torch.cat((contrastive_token, x), dim=1) ###>
+            # # all_pos_embeddings = torch.cat((self.ext_tok_pos_embeddings, self.position_embeddings), dim=1) ###>
+            # embeddings = x + self.position_embeddings #all_pos_embeddings
+        # else:
+        embeddings = x + self.position_embeddings
         embeddings = self.dropout(embeddings)
         return embeddings, features,retain_size_2,retain_size_3
 
@@ -272,8 +272,8 @@ class Encoder(nn.Module):
             self.layer.append(copy.deepcopy(layer))
             
         
-        if self.pretrain:
-            self.contrastive_head = nn.Linear(config.hidden_size, low_dim) ###>
+        # if self.pretrain:
+            # self.contrastive_head = nn.Linear(config.hidden_size, low_dim) ###>
             
 
     def forward(self, hidden_states):
@@ -283,10 +283,10 @@ class Encoder(nn.Module):
             if self.vis:
                 attn_weights.append(weights)
         encoded = self.encoder_norm(hidden_states)
-        if self.pretrain:
-            x_contrastive = self.contrastive_head(encoded[:, 0])###>
+        # if self.pretrain:
+            # x_contrastive = self.contrastive_head(encoded[:, 0])###>
             
-            return x_contrastive, encoded[:, 1:], attn_weights
+            # return encoded, attn_weights
             
         return encoded, attn_weights
 
@@ -302,9 +302,9 @@ class Transformer(nn.Module):
     def forward(self, input_ids):
         embedding_output, features,bfr_flat_size_2,bfr_flat_size_3 = self.embeddings(input_ids)
         # hybrid_output = embedding_output
-        if self.pretrain:
-            x_contrastive, encoded, attn_weights = self.encoder(embedding_output)
-            return x_contrastive, encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
+        # if self.pretrain:
+            # encoded, attn_weights = self.encoder(embedding_output)
+            # return encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
             
         encoded, attn_weights = self.encoder(embedding_output)  # (B, n_patch, hidden)
         # encoded =  torch.cat([encoded , hybrid_output], dim=2)
@@ -436,10 +436,10 @@ class VisionTransformer(nn.Module):
         self.zero_head = zero_head
         self.classifier = config.classifier
         self.transformer = Transformer(config, img_size, vis,low_dim=low_dim,pretrain=pretrain)
-        if self.pretrain:
-            self.decoder = DecoderCup(config)
-        else:
-            self.decoder_finetune = DecoderCup(config)
+        # if self.pretrain:
+        self.decoder = DecoderCup(config)
+        # else:
+            # self.decoder_finetune = DecoderCup(config)
         if pretrain:
             self.recon_head = SegmentationHead(
                 in_channels=config['decoder_channels'][-1],
@@ -464,19 +464,20 @@ class VisionTransformer(nn.Module):
             #if x size was 2x2 then the output of the repeat(1,3,1,1) is 1x3x2x2
             x = x.repeat(1,3,1,1)# 1st size of x is repeated by 1, 2nd size of x is repeated by 3, 3rd and 4th size of x is repeated by 1
             
-        if self.pretrain:
-            x_contrastive, x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
-        else:
-            x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
+        # if self.pretrain:
+            # x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
+        # else:
+        x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
         # print("x in vision transformer")
         # print(x.size())
-        if self.pretrain:
-            x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
-        else:
-            x = self.decoder_finetune(x,bfr_flat_size_2,bfr_flat_size_3, features)
+        encoded_tokens = x #size num_batches*256*768
+        # if self.pretrain:
+        x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
+        # else:
+            # x = self.decoder_finetune(x,bfr_flat_size_2,bfr_flat_size_3, features)
         if self.pretrain:
             logits = self.recon_head(x)
-            return x_contrastive, logits, self.contrastive_w, self.recons_w, self.nce_converge_w
+            return encoded_tokens, logits, self.contrastive_w, self.recons_w, self.nce_converge_w
         else:
             logits = self.segmentation_head(x)
             return logits
