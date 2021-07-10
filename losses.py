@@ -87,7 +87,11 @@ class MTLLOSS():
         rec_loss = self._loss_funcs[1].calculate_loss(output_recons, target_recons)
         reconstruction_loss = self._loss_funcs[1].calculate_weighted_loss(rec_loss, reconstruction_w) 
         
-        norm_contrastive_prd= F.normalize(contrastive_prd, dim=1)
+        norm_contrastive_prd = F.normalize(contrastive_prd, dim=1)
+        # print("norm_contrastive_prd")
+        # print(norm_contrastive_prd.shape)
+        # print("weight_prev_cycle")
+        # print(weight_prev_cycle.shape)
         convergence_loss = self._loss_funcs[3].calculate_loss(norm_contrastive_prd, weight_prev_cycle)
         w_convergence_loss = 30*convergence_loss#self._loss_funcs[3].calculate_weighted_loss(convergence_loss, nce_converge_w) 
                 

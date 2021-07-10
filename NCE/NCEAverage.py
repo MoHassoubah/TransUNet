@@ -7,7 +7,7 @@ import math
 
 class NCEFunction(Function):
     @staticmethod
-    def forward(self, x, y, memory, idx, params):
+    def forward(self, x, y, memory, idx, params, orig_batch_size, patch_size):
         K = int(params[0].item()) # number of -ve samples
         T = params[1].item()
         Z = params[2].item()
@@ -19,7 +19,21 @@ class NCEFunction(Function):
 
         # sample positives & negatives
         #idx dim is batch_size x k+1-> +1 here for the +ve samples
-        idx.select(1,0).copy_(y.data) #idx[:,0].copy_(y.data)
+        # print("idx.shap")
+        # print(idx.select(1,0).shape)
+        # print(idx.shape)
+        # print("iy.data")
+        # print(y.shape)
+        # idx.select(1,0).copy_(y.data) #idx[:,0].copy_(y.data)
+        orig_index= torch.repeat_interleave(y.reshape(orig_batch_size,patch_size), patch_size, dim=0)
+        
+        for cnt1 in range(0, orig_batch_size):
+            for cnt2 in range(0, patch_size):
+                temp=orig_index[(cnt1*patch_size)+cnt2,0].clone()
+                orig_index[(cnt1*patch_size)+cnt2,0]=orig_index[(cnt1*patch_size)+cnt2,cnt2].clone()
+                orig_index[(cnt1*patch_size)+cnt2,cnt2]=temp.clone()
+            
+        idx[:,0:patch_size].copy_(orig_index.data)
 
         # sample correspoinding weights
         weight = torch.index_select(memory, 0, idx.view(-1))# .view(-1)-> for flattenning
@@ -50,7 +64,7 @@ class NCEFunction(Function):
         x_norm = x_norm.reshape(batchSize, inputSize)
 
         if Z < 0:
-            params[2] = out.mean() * outputSize
+            params[2] = out.sum()#.mean() * outputSize
             Z = params[2].item()
             print("normalization constant Z is set to {:.1f}".format(Z))
 
@@ -84,7 +98,11 @@ class NCEFunction(Function):
         
         # gradient of linear
         gradInput = torch.bmm(gradOutput.data.to(torch.float32), weight)#looks like it's a grad of the "out" wrt fi
+        # print("X")
+        # print(x.shape)
         gradInput.resize_as_(x)
+        # print("gradInput")
+        # print(gradInput.shape)
 
         # update the non-parametric data
         weight_pos = weight.select(1, 0).resize_as_(x)#weight[:,0].resize_as_(x)->+ve samples values 128 dim
@@ -94,7 +112,7 @@ class NCEFunction(Function):
         updated_weight = weight_pos.div(w_norm)
         memory.index_copy_(0, y, updated_weight) #only the +ve samples updated
         
-        return gradInput, None, None, None, None
+        return gradInput, None, None, None, None, None, None
 
 class NCEAverage(nn.Module):
 
@@ -110,10 +128,10 @@ class NCEAverage(nn.Module):
         stdv = 1. / math.sqrt(inputSize/3)
         self.register_buffer('memory', torch.rand(outputSize, inputSize).mul_(2*stdv).add_(-stdv)) #stdv for init with random noise
  
-    def forward(self, x, y): #x is the 128dim feature and y is the index in the dataset
+    def forward(self, x, y, orig_batch_size,patch_size): #x is the 128dim feature and y is the index in the dataset
         batchSize = x.size(0)
         idx = self.multinomial.draw(batchSize * (self.K+1)).view(batchSize, -1)
-        out = NCEFunction.apply(x, y, self.memory, idx, self.params)
+        out = NCEFunction.apply(x, y, self.memory, idx, self.params, orig_batch_size, patch_size)
         
         return out
 

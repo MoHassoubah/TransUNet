@@ -272,21 +272,50 @@ class Encoder(nn.Module):
             self.layer.append(copy.deepcopy(layer))
             
         
-        # if self.pretrain:
-            # self.contrastive_head = nn.Linear(config.hidden_size, low_dim) ###>
+        if self.pretrain:
+            self.contrastive_head = nn.Linear(config.hidden_size, low_dim) ###>
+            self.conv_more = Conv2dReLU(
+                config.hidden_size,  #*2 was removed as the concatenation after the transformer with the output of the resnet was removed
+                config.hidden_size,
+                kernel_size=4,
+                padding=0,
+                stride=4,
+                use_batchnorm=True,
+        )
             
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states,bfr_flat_size_2=None,bfr_flat_size_3=None):
         attn_weights = []
         for layer_block in self.layer:
             hidden_states, weights = layer_block(hidden_states)
             if self.vis:
                 attn_weights.append(weights)
         encoded = self.encoder_norm(hidden_states)
-        # if self.pretrain:
-            # x_contrastive = self.contrastive_head(encoded[:, 0])###>
+        if self.pretrain:
+            B, n_patch, hidden = encoded.size()  # reshape from (B, n_patch, hidden) to (B, h, w, hidden)
+            # print("encoded")
+            # print(encoded.shape)
+            h, w = bfr_flat_size_2,bfr_flat_size_3
+            x = encoded.permute(0, 2, 1)
+            # print("x1")
+            # print(x.shape)
+            x = x.contiguous().view(B, hidden, h, w)
+            # print("x2")
+            # print(x.shape)
+            x = self.conv_more(x)
+            # print("x3")
+            # print(x.shape)
+            x = x.flatten(2)
+            # print("x = x.flatten(2)")
+            # print(x.shape)
+            x = x.transpose(-1, -2)
+            # print("x4")
+            # print(x.shape)
+            x_contrastive = x#self.contrastive_head(x)###>
+            # print("x_contrastive")
+            # print(x_contrastive.shape)
             
-            # return encoded, attn_weights
+            return x_contrastive, encoded, attn_weights
             
         return encoded, attn_weights
 
@@ -302,9 +331,9 @@ class Transformer(nn.Module):
     def forward(self, input_ids):
         embedding_output, features,bfr_flat_size_2,bfr_flat_size_3 = self.embeddings(input_ids)
         # hybrid_output = embedding_output
-        # if self.pretrain:
-            # encoded, attn_weights = self.encoder(embedding_output)
-            # return encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
+        if self.pretrain:
+            contrastive_patch, encoded, attn_weights = self.encoder(embedding_output,bfr_flat_size_2,bfr_flat_size_3)
+            return contrastive_patch, encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
             
         encoded, attn_weights = self.encoder(embedding_output)  # (B, n_patch, hidden)
         # encoded =  torch.cat([encoded , hybrid_output], dim=2)
@@ -464,20 +493,20 @@ class VisionTransformer(nn.Module):
             #if x size was 2x2 then the output of the repeat(1,3,1,1) is 1x3x2x2
             x = x.repeat(1,3,1,1)# 1st size of x is repeated by 1, 2nd size of x is repeated by 3, 3rd and 4th size of x is repeated by 1
             
-        # if self.pretrain:
-            # x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
-        # else:
-        x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
+        if self.pretrain:
+            contrastive_patch,x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
+        else:
+            x, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3 = self.transformer(x)  # (B, n_patch, hidden)
         # print("x in vision transformer")
         # print(x.size())
-        encoded_tokens = x #size num_batches*256*768
+        # encoded_tokens = x #size num_batches*256*768
         # if self.pretrain:
         x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
         # else:
             # x = self.decoder_finetune(x,bfr_flat_size_2,bfr_flat_size_3, features)
         if self.pretrain:
             logits = self.recon_head(x)
-            return encoded_tokens, logits, self.contrastive_w, self.recons_w, self.nce_converge_w
+            return contrastive_patch, logits, self.contrastive_w, self.recons_w, self.nce_converge_w
         else:
             logits = self.segmentation_head(x)
             return logits

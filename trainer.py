@@ -43,8 +43,8 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
     testsize = valLoader.dataset.__len__()
     valNCEsize = NCE_valLoader.dataset.__len__()
     
-    trainFeatures=torch.zeros((lower_dim,valNCEsize)).cuda()
-    indicies = torch.zeros(valNCEsize).cuda()
+    trainFeatures=torch.zeros((lower_dim,valNCEsize*16)).cuda()
+    # indicies = torch.zeros(valNCEsize).cuda()
     lossF = torch.nn.L1Loss()
     
     val_losses = AverageMeter()
@@ -60,12 +60,24 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
             (index, image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, path_seq, path_name) =  batch_data
             
             reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
-            index = index.cuda()
             
-            batchSize = reduced_image_batch.size(0)
+            
             features, _, _, _,_  = net(reduced_image_batch)#features of the training data with the transform of the testing data
-            trainFeatures[:, batch_idx*batchSize:batch_idx*batchSize+batchSize] = features.data.t()
-            indicies[batch_idx*batchSize:batch_idx*batchSize+batchSize] = index
+            
+            ###############
+            batchSize = features.size(0)*features.size(1)
+            ext_index = torch.zeros(batchSize, dtype=index.dtype)
+            for i in range(0, index.size()[0]):
+                for j in range(0,features.size(1)):
+                    ext_index[(i*features.size(1))+j] = (index[i]*features.size(1))+j
+            
+            ext_index = ext_index.cuda()
+            
+            ###############
+            
+            
+            trainFeatures[:, batch_idx*batchSize:batch_idx*batchSize+batchSize] = features.reshape(-1,lower_dim).data.t()
+            # indicies[batch_idx*batchSize:batch_idx*batchSize+batchSize] = ext_index
         
         print("####################################pass teh first for loop")
         end = time.time()
@@ -74,10 +86,20 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
         
             image_batch = image_batch.to(device, non_blocking=True)
             reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
-            index = index.cuda()
             
-            batchSize = reduced_image_batch.size(0)
             features, recon_prd, _, _ ,_  = net(reduced_image_batch)#features of the training data with the transform of the testing data
+            
+            
+            ###############
+            batchSize = features.size(0)*features.size(1)
+            ext_index = torch.zeros(batchSize, dtype=index.dtype)
+            for i in range(0, index.size()[0]):
+                for j in range(0,features.size(1)):
+                    ext_index[(i*features.size(1))+j] = (index[i]*features.size(1))+j
+            
+            ext_index = ext_index.cuda()
+            
+            ###############
             
             loss_v = lossF(recon_prd, image_batch)
             val_losses.update(loss_v.mean().item(), batchSize)
@@ -85,6 +107,7 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
             net_time.update(time.time() - end)
             end = time.time()
             #features dim=(batchsize,lower_dim) * trainFeatures dim=(lower_dim,#samples in dataset)-> result dim=(batchsize, #samples in dataset)
+            features = features.reshape(-1,lower_dim)
             dist = torch.mm(features, trainFeatures)
 
             #(values yd, indices yi)
@@ -95,7 +118,7 @@ def NN(epoch, net,lower_dim, NCE_valLoader, valLoader):
             # start_index = (index*500)+index
             # correct += torch.logical_and(start_index <= yi, (start_index +500) >=yi).sum().item()
             
-            correct += torch.logical_and(index -2 <= yi, (index +2) >=yi).sum().item()
+            correct += torch.logical_and(ext_index -2 <= yi, (ext_index +2) >=yi).sum().item()
             # correct += index.eq(yi.data).sum().item()
             
             cls_time.update(time.time() - end)
@@ -237,7 +260,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
     if args.pretrain:
         train_data_size = parser.get_num_train_scans()
         # nce-k 4096 --nce-t 0.07 --nce-m 0.5 --low-dim 128
-        lemniscate = NCEAverage(args.low_dim, 256*train_data_size, args.nce_k, args.nce_t, args.nce_m).cuda()
+        lemniscate = NCEAverage(args.low_dim, 16*train_data_size, args.nce_k, args.nce_t, args.nce_m).cuda()
         criterion = MTL_loss(device, train_data_size, args.batch_size)
     ######################
     
@@ -259,13 +282,12 @@ def trainer_kitti(args, model, snapshot_path, parser):
         iou = AverageMeter()
         
         for i_batch, batch_data in enumerate(trainloader):
-        
+            
             if args.pretrain:
                 (index, image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, path_seq, path_name) =  batch_data
             
                 image_batch = image_batch.to(device, non_blocking=True)
                 reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
-                index = index.cuda()
                 
                 
                 with torch.cuda.amp.autocast():
@@ -273,21 +295,29 @@ def trainer_kitti(args, model, snapshot_path, parser):
                     contrastive_prd, recon_prd, contrastive_w, recons_w, nce_converge_w = model(reduced_image_batch)
                     
                     #################
-                    batchSize = reduced_image_batch.size(0)
-                    weight_prev_cycle = torch.index_select(lemniscate.memory, 0, index.view(-1))
-                    weight_prev_cycle.resize_(batchSize,args.low_dim)
+                    new_batch_size = contrastive_prd.size(0)*contrastive_prd.size(1)
+                    ext_index = torch.zeros(new_batch_size, dtype=index.dtype)
+                    for i in range(0, index.size()[0]):
+                        for j in range(0,contrastive_prd.size(1)):
+                            ext_index[(i*contrastive_prd.size(1))+j] = (index[i]*contrastive_prd.size(1))+j
                     
-                    w_test =weight_prev_cycle.reshape(batchSize, 1,args.low_dim)
-                    x_norm = contrastive_prd.reshape(batchSize, args.low_dim, 1)
-                    x_norm = F.normalize(x_norm, dim=1).data
+                    ext_index = ext_index.cuda()
+                    
+                    #################
+                    weight_prev_cycle = torch.index_select(lemniscate.memory, 0, ext_index.view(-1))
+                    weight_prev_cycle.resize_(new_batch_size,args.low_dim)
+                    
+                    w_test =weight_prev_cycle.reshape(new_batch_size, 1,args.low_dim)
+                    x_reshape = contrastive_prd.reshape(new_batch_size, args.low_dim, 1)
+                    x_norm = F.normalize(x_reshape, dim=1).data
                     out = torch.bmm(w_test, x_norm).squeeze(1).squeeze(1)
                     ################
+                    x_input = x_reshape.squeeze(2)
+                    output_P_i_v = lemniscate(x_input, ext_index, contrastive_prd.size(0),contrastive_prd.size(1))
                     
-                    output_P_i_v = lemniscate(contrastive_prd, index)
-                    
-                    loss, (loss1, loss2, loss3) = criterion(output_P_i_v, index,
+                    loss, (loss1, loss2, loss3) = criterion(output_P_i_v, ext_index,
                                                             recon_prd, image_batch, contrastive_w, recons_w, \
-                                                            contrastive_prd, weight_prev_cycle, nce_converge_w)
+                                                            x_input, weight_prev_cycle, nce_converge_w)
                 
                 writer.add_scalar('info/P_i_v', output_P_i_v[:,0].mean().item(), iter_num)  
                 writer.add_scalar('info/P_i_v_dash', output_P_i_v[:,1:].mean().item(), iter_num) 
