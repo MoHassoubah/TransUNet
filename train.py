@@ -74,7 +74,7 @@ parser.add_argument(
   )
 
 
-parser.add_argument('--low-dim', default=768, type=int,
+parser.add_argument('--low-dim', default=512, type=int,
                     metavar='D', help='feature dimension')
 parser.add_argument('--nce-k', default=4096, type=int, #default=4096
                     metavar='K', help='number of negative samples for NCE')
