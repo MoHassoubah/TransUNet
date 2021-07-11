@@ -311,7 +311,7 @@ class Encoder(nn.Module):
             x = x.transpose(-1, -2)
             # print("x4")
             # print(x.shape)
-            x_contrastive = x#self.contrastive_head(x)###>
+            x_contrastive = self.contrastive_head(x)###>
             # print("x_contrastive")
             # print(x_contrastive.shape)
             
