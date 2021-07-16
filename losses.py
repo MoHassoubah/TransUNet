@@ -93,13 +93,14 @@ class MTLLOSS():
         # print("weight_prev_cycle")
         # print(weight_prev_cycle.shape)
         convergence_loss = self._loss_funcs[3].calculate_loss(norm_contrastive_prd, weight_prev_cycle)
-        w_convergence_loss = 30*convergence_loss#self._loss_funcs[3].calculate_weighted_loss(convergence_loss, nce_converge_w) 
+        w_conv=60
+        w_convergence_loss = w_conv*convergence_loss#self._loss_funcs[3].calculate_weighted_loss(convergence_loss, nce_converge_w) 
                 
         reg_term = torch.pow(contrastive_prd,2).sum()#torch.pow(norm_contrastive_prd, 2)   
         reg_loss=1./reg_term
         
         # total_loss = contrastive_loss + reconstruction_loss
-        total_loss = w_nce_loss + reconstruction_loss + w_convergence_loss + (30*reg_loss)
+        total_loss = w_nce_loss + reconstruction_loss + w_convergence_loss + (w_conv*reg_loss)
         
         logging.info('w_nce_loss : %f,******** w_convergence_loss : %f, ******** reconstruction_loss : %f' % (w_nce_loss.item(), \
                 w_convergence_loss.item(), reconstruction_loss.item()))

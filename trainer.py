@@ -307,13 +307,13 @@ def trainer_kitti(args, model, snapshot_path, parser):
                     weight_prev_cycle = torch.index_select(lemniscate.memory, 0, ext_index.view(-1))
                     weight_prev_cycle.resize_(new_batch_size,args.low_dim)
                     
-                    w_test =weight_prev_cycle.reshape(new_batch_size, 1,args.low_dim)
+                    w_test = weight_prev_cycle.reshape(new_batch_size, 1,args.low_dim)
                     x_reshape = contrastive_prd.reshape(new_batch_size, args.low_dim, 1)
                     x_norm = F.normalize(x_reshape, dim=1).data
                     out = torch.bmm(w_test, x_norm).squeeze(1).squeeze(1)
                     ################
                     x_input = x_reshape.squeeze(2)
-                    output_P_i_v = lemniscate(x_input, ext_index, contrastive_prd.size(0),contrastive_prd.size(1))
+                    output_P_i_v = lemniscate(x_input, ext_index, contrastive_prd.size(0),contrastive_prd.size(1), logging)
                     
                     loss, (loss1, loss2, loss3) = criterion(output_P_i_v, ext_index,
                                                             recon_prd, image_batch, contrastive_w, recons_w, \

@@ -7,7 +7,7 @@ import math
 
 class NCEFunction(Function):
     @staticmethod
-    def forward(self, x, y, memory, idx, params, orig_batch_size, patch_size):
+    def forward(self, x, y, memory, idx, params, orig_batch_size, patch_size, logging):
         K = int(params[0].item()) # number of -ve samples
         T = params[1].item()
         Z = params[2].item()
@@ -54,11 +54,13 @@ class NCEFunction(Function):
         # print(out.sum())
         # print("T")
         # print(T)
+        logging.info('out1 sum : %f, T : %f' % (out.sum().item(), T))
         out.div_(T).exp_() # batchSize * self.K+1 # out = exp((v.T * fi)/T)
         # print("out2 sum")
         # print(out.sum())
         # out.exp_()
         
+        logging.info('out2 sum : %f' % (out.sum().item()))
         # print("out3 sum")
         # print(out.sum())
         x_norm = x_norm.reshape(batchSize, inputSize)
@@ -67,10 +69,12 @@ class NCEFunction(Function):
             params[2] = out.sum()#.mean() * outputSize
             Z = params[2].item()
             print("normalization constant Z is set to {:.1f}".format(Z))
+        logging.info('Z : %f' % (Z))
 
         out.div_(Z).resize_(batchSize, K+1) #P(i|v) #out.div_(Z) 
         # print("out sum")
         # print(out.sum())
+        logging.info('out3 sum : %f' % (out.sum().item()))
 
         self.save_for_backward(x_norm.data, memory, y, weight_norm, out, params) #Saves given tensors for a future call to backward()
         
@@ -112,7 +116,7 @@ class NCEFunction(Function):
         updated_weight = weight_pos.div(w_norm)
         memory.index_copy_(0, y, updated_weight) #only the +ve samples updated
         
-        return gradInput, None, None, None, None, None, None
+        return gradInput, None, None, None, None, None, None,None
 
 class NCEAverage(nn.Module):
 
@@ -128,10 +132,10 @@ class NCEAverage(nn.Module):
         stdv = 1. / math.sqrt(inputSize/3)
         self.register_buffer('memory', torch.rand(outputSize, inputSize).mul_(2*stdv).add_(-stdv)) #stdv for init with random noise
  
-    def forward(self, x, y, orig_batch_size,patch_size): #x is the 128dim feature and y is the index in the dataset
+    def forward(self, x, y, orig_batch_size,patch_size, logging): #x is the 128dim feature and y is the index in the dataset
         batchSize = x.size(0)
         idx = self.multinomial.draw(batchSize * (self.K+1)).view(batchSize, -1)
-        out = NCEFunction.apply(x, y, self.memory, idx, self.params, orig_batch_size, patch_size)
+        out = NCEFunction.apply(x, y, self.memory, idx, self.params, orig_batch_size, patch_size, logging)
         
         return out
 
