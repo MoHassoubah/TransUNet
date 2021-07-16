@@ -296,7 +296,7 @@ class Encoder(nn.Module):
             # # x_rot_axis = self.rot_axis_head(encoded[:, 1])
             # x_contrastive = self.contrastive_head(encoded[:, 1])###>
             
-            # return x_rot, x_contrastive, encoded[:, 2:], attn_weights
+            # return x_rot, x_contrastive, encoded, attn_weights
             
         return encoded, attn_weights
 
@@ -307,18 +307,18 @@ class Transformer(nn.Module):
         self.pretrain = pretrain
             
         self.embeddings = Embeddings(config, img_size=img_size,pretrain=pretrain, dropout_rate=dropout_rate, eval_uncer=eval_uncer)
-        self.encoder = Encoder(config, vis,pretrain=pretrain)
+        # self.encoder = Encoder(config, vis,pretrain=pretrain)
 
     def forward(self, input_ids):
         embedding_output, features,bfr_flat_size_2,bfr_flat_size_3 = self.embeddings(input_ids)
         # hybrid_output = embedding_output
         # if self.pretrain:
             # x_rot, x_contrastive, encoded, attn_weights = self.encoder(embedding_output)
-            # return x_rot, x_contrastive, encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
+            # return None, None, embedding_output, None, features,bfr_flat_size_2,bfr_flat_size_3
             
-        encoded, attn_weights = self.encoder(embedding_output)  # (B, n_patch, hidden)
+        # encoded, attn_weights = self.encoder(embedding_output)  # (B, n_patch, hidden)
         # encoded =  torch.cat([encoded , hybrid_output], dim=2)
-        return encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
+        return embedding_output, None, features,bfr_flat_size_2,bfr_flat_size_3
 
 
 class Conv2dReLU(nn.Sequential):
@@ -464,7 +464,7 @@ class VisionTransformer(nn.Module):
         self.classifier = config.classifier
         self.transformer = Transformer(config, img_size, vis,pretrain=pretrain, dropout_rate=dropout_rate ,eval_uncer=eval_uncer)
         # if self.pretrain:
-        self.decoder = DecoderCup(config, dropout_rate=dropout_rate, eval_uncer=eval_uncer)
+        self.decoder = DecoderCup(config)
         # else:
             # self.decoder_finetune = DecoderCup(config)
         if pretrain:
