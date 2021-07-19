@@ -196,7 +196,7 @@ if __name__ == "__main__":
     else:
         # net.load_from(weights=np.load(config_vit.pretrained_path))
         
-        net.apply(weights_init)
+        # net.apply(weights_init)
         #################
         new_params = net.state_dict().copy()
         saved_state_dict = torch.load(RESTORE_FROM_DIRECTORY + '\\' +args.restore_from+'.pth')
