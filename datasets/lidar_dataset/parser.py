@@ -35,10 +35,13 @@ class SemanticKitti(Dataset):
                max_points=150000,   # max number of points present in dataset
                gt=True,            # send ground truth?
                nuscenes_dataset=False,         # nuscebes dataset?
-               pretrain=False):                 # use pretraining flag
+               pretrain=False,                  # use pretraining flag
+               evaluate=False):                  # evaluate flag for noise and model uncertainity calculations  
     # save deats
     self.root = root #os.path.join(root, "sequences") #root
     self.pretrain = pretrain
+    self.evaluate = evaluate
+    self.drop_percentage = 0.2
     self.sequences = sequences
     self.labels = labels
     self.color_map = color_map
@@ -183,7 +186,9 @@ class SemanticKitti(Dataset):
                           fov_up=self.sensor_fov_up,
                           fov_down=self.sensor_fov_down,
                           nuscenes_dataset=self.nuscenes_dataset,
-                          pretrain= self.pretrain)
+                          pretrain= self.pretrain,
+                          evaluate=self.evaluate,
+                          drop_percentage=self.drop_percentage)
     else:
       scan = LaserScan(project=True,
                        H=self.sensor_img_H,
@@ -191,7 +196,9 @@ class SemanticKitti(Dataset):
                        fov_up=self.sensor_fov_up,
                        fov_down=self.sensor_fov_down,
                        nuscenes_dataset=self.nuscenes_dataset,
-                       pretrain= self.pretrain)
+                       pretrain= self.pretrain,
+                       evaluate=self.evaluate,
+                       drop_percentage=self.drop_percentage)
                        
     # open and obtain scan
     scan.open_scan(scan_file)
@@ -244,7 +251,7 @@ class SemanticKitti(Dataset):
             ) / self.sensor_img_stds[:, None, None]
     proj = proj * proj_mask.float()
     
-    if self.pretrain:
+    if self.pretrain or self.evaluate:
         # get points and labels
         reduced_proj_range = torch.from_numpy(scan.reduced_proj_range).clone()
         reduced_proj_xyz = torch.from_numpy(scan.reduced_proj_xyz).clone()
@@ -260,60 +267,6 @@ class SemanticKitti(Dataset):
         reduced_proj = reduced_proj * reduced_proj_mask.float()
         
         
-    ################################
-    ### SCAN 2
-    ################################    
-    # open a semantic laserscan
-    if self.pretrain:  
-        if self.gt:
-          scan_2 = SemLaserScan(self.color_map,
-                                  project=True,
-                                  H=self.sensor_img_H,
-                                  W=self.sensor_img_W,
-                                  fov_up=self.sensor_fov_up,
-                                  fov_down=self.sensor_fov_down,
-                                  nuscenes_dataset=self.nuscenes_dataset,
-                                  pretrain= self.pretrain)
-        else:               
-          scan_2 = LaserScan(project=True,
-                               H=self.sensor_img_H,
-                               W=self.sensor_img_W,
-                               fov_up=self.sensor_fov_up,
-                               fov_down=self.sensor_fov_down,
-                               nuscenes_dataset=self.nuscenes_dataset,
-                               pretrain= self.pretrain)
-        
-        scan_2.set_points(scan.points, scan.remissions)#same point cloud
-        
-        
-        # get points and labels
-        proj_range_2 = torch.from_numpy(scan_2.proj_range).clone()
-        proj_xyz_2 = torch.from_numpy(scan_2.proj_xyz).clone()
-        proj_remission_2 = torch.from_numpy(scan_2.proj_remission).clone()
-        proj_mask_2 = torch.from_numpy(scan_2.proj_mask)
-                  
-            
-        proj_2 = torch.cat([proj_range_2.unsqueeze(0).clone(),
-                          proj_xyz_2.clone().permute(2, 0, 1),
-                          proj_remission_2.unsqueeze(0).clone()]) # TO create 4 channels image each channel carry sort of data (range,x,y,z,remission)
-        proj_2 = (proj_2 - self.sensor_img_means[:, None, None]
-                ) / self.sensor_img_stds[:, None, None]
-        proj_2 = proj_2 * proj_mask_2.float()
-        
-        # get points and labels
-        reduced_proj_range_2 = torch.from_numpy(scan_2.reduced_proj_range).clone()
-        reduced_proj_xyz_2 = torch.from_numpy(scan_2.reduced_proj_xyz).clone()
-        reduced_proj_remission_2 = torch.from_numpy(scan_2.reduced_proj_remission).clone()
-        reduced_proj_mask_2 = torch.from_numpy(scan_2.reduced_proj_mask)
-          
-            
-        reduced_proj_2 = torch.cat([reduced_proj_range_2.unsqueeze(0).clone(),
-                          reduced_proj_xyz_2.clone().permute(2, 0, 1),
-                          reduced_proj_remission_2.unsqueeze(0).clone()]) # TO create 4 channels image each channel carry sort of data (range,x,y,z,remission)
-        reduced_proj_2 = (reduced_proj_2 - self.sensor_img_means[:, None, None]
-                ) / self.sensor_img_stds[:, None, None]
-        reduced_proj_2 = reduced_proj_2 * reduced_proj_mask_2.float()
-
     # get name and sequence
     path_norm = os.path.normpath(scan_file)
     path_split = path_norm.split(os.sep)
@@ -324,12 +277,12 @@ class SemanticKitti(Dataset):
     # print("path_name", path_name)
 
     # return
-    if not self.pretrain:
-        return proj, proj_mask, proj_labels, unproj_labels, path_seq, path_name, proj_x, proj_y, proj_range, unproj_range, proj_xyz, unproj_xyz, proj_remission, unproj_remissions, unproj_n_points
+    if self.evaluate:
+        return proj, proj_mask, proj_labels, reduced_proj, reduced_proj_mask, scan.rot_ang_around_z_axis, path_seq, path_name
+    elif self.pretrain:
+        return proj, proj_mask, reduced_proj, reduced_proj_mask, scan.rot_ang_around_z_axis, path_seq, path_name
     else:
-        return proj, proj_mask, reduced_proj, reduced_proj_mask, scan.rot_ang_around_z_axis, \
-        proj_2, proj_mask_2, reduced_proj_2, reduced_proj_mask_2,\
-        scan_2.rot_ang_around_z_axis, path_seq, path_name
+        return proj, proj_mask, proj_labels, unproj_labels, path_seq, path_name, proj_x, proj_y, proj_range, unproj_range, proj_xyz, unproj_xyz, proj_remission, unproj_remissions, unproj_n_points
         
         
   def __len__(self):
@@ -360,6 +313,9 @@ class SemanticKitti(Dataset):
         print("Wrong key ", key)
     # do the mapping
     return lut[label]
+    
+  def set_eval_drop_percentage_dataset(self, drp_percentage):
+    self.drop_percentage=drp_percentage
 
 
 class Parser():
@@ -381,7 +337,8 @@ class Parser():
                gt=True,                         # get gt?
                shuffle_train=True,              # shuffle training set?
                nuscenes_dataset=False,          # nuscebes dataset?
-               pretrain=False):                 # use pretraining flag
+               pretrain=False,                  # use pretraining flag
+               evaluate=False):                 # evaluate flag for noise and model uncertainity calculations  
                
     super(Parser, self).__init__()
 
@@ -400,6 +357,7 @@ class Parser():
     self.batch_size = batch_size
     self.workers = workers
     self.pretrain = pretrain
+    self.evaluate = evaluate
     self.gt = gt
     self.shuffle_train = shuffle_train
     self.nuscenes_dataset = nuscenes_dataset
@@ -443,7 +401,8 @@ class Parser():
                                        max_points=max_points,
                                        gt=self.gt,
                                        nuscenes_dataset=self.nuscenes_dataset,
-                                       pretrain=self.pretrain)
+                                       pretrain=self.pretrain,
+                                       evaluate=self.evaluate)
 
       self.validloader = torch.utils.data.DataLoader(self.valid_dataset,
                                                    batch_size=self.batch_size,
@@ -474,6 +433,10 @@ class Parser():
                                                     drop_last=True)
       assert len(self.testloader) > 0
       self.testiter = iter(self.testloader)
+
+  def set_eval_drop_percentage(self, drp_percentage):
+    if self.valid_sequences:
+        self.valid_dataset.set_eval_drop_percentage_dataset(drp_percentage)
 
   def get_train_batch(self):
     scans = self.trainiter.next()

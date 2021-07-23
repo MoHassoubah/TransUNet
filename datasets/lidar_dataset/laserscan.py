@@ -8,7 +8,7 @@ class LaserScan:
   """Class that contains LaserScan with x,y,z,r"""
   EXTENSIONS_SCAN = ['.bin']
 
-  def __init__(self, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0, nuscenes_dataset=False, pretrain=False):
+  def __init__(self, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0, nuscenes_dataset=False, pretrain=False, evaluate=False,drop_percentage=None):
     self.project = project
     self.proj_H = H
     self.proj_W = W
@@ -16,6 +16,8 @@ class LaserScan:
     self.proj_fov_down = fov_down
     self.nuscenes_dataset = nuscenes_dataset
     self.pretrain = pretrain
+    self.evaluate = evaluate
+    self.drop_percentage = drop_percentage
     self.reset()
 
   def reset(self):
@@ -50,7 +52,7 @@ class LaserScan:
     
     
     ######################################
-    if self.pretrain:
+    if self.pretrain or self.evaluate:
         self.indicies_remained_aft_drop = np.zeros((0, 1), dtype=np.int32)    # [m ,1]: indicies_remained_aft_drop
         
         self.reduced_proj_range = np.full((self.proj_H, self.proj_W), -1,
@@ -141,13 +143,13 @@ class LaserScan:
     else:
       self.remissions = np.zeros((points.shape[0]), dtype=np.float32)
       
-    if self.pretrain:
+    if self.pretrain or self.evaluate:
         aug_points = self.do_cloud_augmentatiion()
         self.drop_x_percent_frm_pntcloud()
 
     # if projection is wanted, then do it and fill in the structure
     if self.project:
-        if self.pretrain:    
+        if self.pretrain or self.evaluate:    
             proj_y, proj_x, depth, ret_points, ret_remission, indices = self.do_range_projection(param_aug_points = aug_points)
         else:
             proj_y, proj_x, depth, ret_points, ret_remission, indices = self.do_range_projection()
@@ -158,7 +160,8 @@ class LaserScan:
         self.proj_idx[proj_y, proj_x] = indices
         self.proj_mask = (self.proj_idx > 0).astype(np.int32)
         
-        if self.pretrain:
+        # do the projection one more time for the reduced PointCloud
+        if self.pretrain or self.evaluate:
             proj_y, proj_x, depth, ret_points, ret_remission, indices = self.do_range_projection(True,param_aug_points = aug_points)
             
             self.reduced_proj_range[proj_y, proj_x] = depth
@@ -211,12 +214,16 @@ class LaserScan:
   def do_cloud_augmentatiion(self):
     aug_points = self.do_translation_augmentation()
     aug_points = self.do_random_scaling(aug_points)
-    aug_points = self.do_random_flip_x_y_axis(aug_points)
-    aug_points = self.do_random_rotation(aug_points)
+    if not self.evaluate:
+        aug_points = self.do_random_flip_x_y_axis(aug_points)
+        aug_points = self.do_random_rotation(aug_points)
     return aug_points
     
   def drop_x_percent_frm_pntcloud(self):
-    dropping_ratio = np.random.uniform(0.5, 0.76)
+    if self.evaluate:
+        dropping_ratio = self.drop_percentage
+    else:
+        dropping_ratio = np.random.uniform(0.5, 0.76)
     num_pnts = self.points.shape[0]
     num_dropped_pnts = int(num_pnts*dropping_ratio)
     rng = default_rng()
@@ -230,7 +237,7 @@ class LaserScan:
         if the value of the constructor was not set (in case you change your
         mind about wanting the projection)
     """
-    if self.pretrain:
+    if self.pretrain or self.evaluate:
         if drop_pnts:
             pointcloud = param_aug_points[self.indicies_remained_aft_drop]
             pnt_remission = self.remissions[self.indicies_remained_aft_drop]
@@ -284,7 +291,7 @@ class LaserScan:
     proj_y = np.minimum(self.proj_H - 1, proj_y)
     proj_y = np.maximum(0, proj_y).astype(np.int32)   # in [0,H-1]
     if not self.pretrain:
-        self.proj_y = np.copy(proj_y)  # stope a copy in original order
+        self.proj_y = np.copy(proj_y)  # store a copy in original order
 
     # order in decreasing depth
     indices = np.arange(depth.shape[0])
@@ -304,8 +311,8 @@ class SemLaserScan(LaserScan):
   """Class that contains LaserScan with x,y,z,r,sem_label,sem_color_label,inst_label,inst_color_label"""
   EXTENSIONS_LABEL = ['.label']
 
-  def __init__(self,  sem_color_dict=None, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0, nuscenes_dataset=False, max_classes=300, pretrain=False):
-    super(SemLaserScan, self).__init__(project, H, W, fov_up, fov_down, nuscenes_dataset,pretrain)
+  def __init__(self,  sem_color_dict=None, project=False, H=64, W=1024, fov_up=3.0, fov_down=-25.0, nuscenes_dataset=False, max_classes=300, pretrain=False, evaluate=False, drop_percentage=None):
+    super(SemLaserScan, self).__init__(project, H, W, fov_up, fov_down, nuscenes_dataset,pretrain,evaluate,drop_percentage)
     self.reset()
 
     # make semantic colors

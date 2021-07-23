@@ -166,27 +166,18 @@ def trainer_kitti(args, model, snapshot_path, parser):
         model.train()
         
         iou = AverageMeter()
-        
+          
         for i_batch, batch_data in enumerate(trainloader):
-        
             if args.pretrain:
                 (image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, \
-                rot_ang_around_z_axis_batch, image_batch_2, proj_mask_2, reduced_image_batch_2,\
-                reduced_proj_mask_2, rot_ang_around_z_axis_batch_2,path_seq, path_name) =  batch_data
+                rot_ang_around_z_axis_batch,path_seq, path_name) =  batch_data
             
                 image_batch = image_batch.to(device, non_blocking=True)
                 reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
-                # rot_ang_around_z_axis_batch = rot_ang_around_z_axis_batch.to(device, non_blocking=True).long()
-                
-                
-                # image_batch_2 = image_batch_2.to(device, non_blocking=True)
-                # reduced_image_batch_2 = reduced_image_batch_2.to(device, non_blocking=True) # Apply distortion
-                # rot_ang_around_z_axis_batch_2 = rot_ang_around_z_axis_batch_2.to(device, non_blocking=True).long()
                 
                 with torch.cuda.amp.autocast():
                 
                     rot_prd, contrastive_prd, recon_prd, rot_w, contrastive_w, recons_w = model(reduced_image_batch)
-                    # rot_prd_2, contrastive_prd_2, recon_prd_2, _, _, _                         = model(reduced_image_batch_2)
                         
                     rot_p = None#torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)
                     rots = None#torch.cat([rot_ang_around_z_axis_batch, rot_ang_around_z_axis_batch_2], dim=0) 
@@ -293,17 +284,10 @@ def trainer_kitti(args, model, snapshot_path, parser):
                         
                     if args.pretrain:
                         (image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, \
-                        rot_ang_around_z_axis_batch, image_batch_2, proj_mask_2, reduced_image_batch_2,\
-                        reduced_proj_mask_2, rot_ang_around_z_axis_batch_2,path_seq, path_name) =  batch_data
+                        rot_ang_around_z_axis_batch,path_seq, path_name) =  batch_data
                     
                         image_batch = image_batch.to(device, non_blocking=True)
                         reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
-                        # rot_ang_around_z_axis_batch = rot_ang_around_z_axis_batch.to(device, non_blocking=True).long()
-                        
-                        
-                        # image_batch_2 = image_batch_2.to(device, non_blocking=True)
-                        # reduced_image_batch_2 = reduced_image_batch_2.to(device, non_blocking=True) # Apply distortion
-                        # rot_ang_around_z_axis_batch_2 = rot_ang_around_z_axis_batch_2.to(device, non_blocking=True).long()
                         
                         with torch.cuda.amp.autocast():
                         
@@ -376,6 +360,108 @@ def trainer_kitti(args, model, snapshot_path, parser):
             logging.info("save model to {}".format(save_mode_path))
             iterator.close()
             break
+
+    writer.close()
+    return "Training Finished!"
+    
+def eval_robust_to_noise_kitti(args, model, snapshot_path, parser):
+    from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
+    logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
+                        format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
+    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+    logging.info(str(args))
+    # base_lr = args.base_lr
+    num_classes = args.num_classes
+    batch_size = args.batch_size * args.n_gpu
+    # max_iterations = args.max_iterations
+                          
+    print("The length of train set is: {}".format((parser.get_train_size())))
+
+    def worker_init_fn(worker_id):
+        random.seed(args.seed + worker_id)
+
+    # trainloader = parser.get_train_set()#DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)#,
+                             #worker_init_fn=worker_init_fn) #this gave the error Can't pickle local object 'trainer_synapse.<locals>.worker_init_fn'
+    
+    ########################                         
+    valid_loader = parser.get_valid_set()
+    device = torch.device("cuda")
+    ignore_classes = [0]
+    evaluator = iouEval(parser.get_n_classes(),device, ignore_classes)
+    
+    
+    #Empty the TensorBoard directory
+    dir_path = snapshot_path+'/log'
+
+    try:
+        shutil.rmtree(dir_path)
+    except OSError as e:
+        print("Error: %s : %s" % (dir_path, e.strerror))
+        
+    #######################
+    
+
+    if args.n_gpu > 1:
+        model = nn.DataParallel(model)
+    ce_loss = torch.nn.CrossEntropyLoss(ignore_index=255)
+    # dice_loss = DiceLoss(num_classes)
+    writer = SummaryWriter(snapshot_path + '/log')
+    # iter_num = 0
+    # max_epoch = args.max_epochs
+    # max_iterations = args.max_epochs * len(trainloader)  # max_epoch = max_iterations // len(trainloader) + 1
+    # logging.info("{} iterations per epoch. {} max iterations ".format(len(trainloader), max_iterations))
+    
+    drop_ratio_list = [0.1,0.15,0.2,0.25]
+    
+    for drp_i in drop_ratio_list:
+        iou = AverageMeter()
+        
+        parser.set_eval_drop_percentage(drp_i)
+        
+        ##############################################
+        ##############################################
+        
+        evaluator.reset()
+        iou.reset()
+        
+        val_losses = AverageMeter()
+        
+        model.eval()
+        with torch.no_grad():
+            
+            for index, batch_data in enumerate(valid_loader):
+                if index % 100 == 0:
+                    print('%d validation iter processd' % index)
+
+                (image_batch, proj_mask, label_batch, reduced_image_batch, reduced_proj_mask, \
+                        rot_ang_around_z_axis_batch, path_seq, path_name) =  batch_data      
+                        
+                reduced_image_batch, label_batch = reduced_image_batch.cuda(), label_batch.cuda(non_blocking=True).long()
+                # reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion 
+                
+                outputs = model(reduced_image_batch)
+                
+                loss_ce = ce_loss(outputs, label_batch)
+                
+                
+                val_losses.update(loss_ce.mean().item(), args.batch_size)
+                
+                argmax = outputs.argmax(dim=1)
+                
+                evaluator.addBatch(argmax, label_batch)
+                      
+            jaccard, class_jaccard = evaluator.getIoU()
+            
+            iou.update(jaccard.item(), args.batch_size)#in_vol.size(0)) 
+
+        writer.add_scalar('eval/iou', iou.avg, drp_i)
+            
+        writer.add_scalar('eval/loss', val_losses.avg, drp_i)
+            
+            
+        ##############################################
+        ##############################################
+
 
     writer.close()
     return "Training Finished!"
