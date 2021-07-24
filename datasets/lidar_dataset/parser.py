@@ -209,7 +209,7 @@ class SemanticKitti(Dataset):
       scan.proj_sem_label = self.map(scan.proj_sem_label, self.learning_map)
 
     
-    if not (self.pretrain or self.evaluate):
+    if not self.pretrain:
         if self.gt:
           # map unused classes to used classes (also for projection)
           scan.sem_label = self.map(scan.sem_label, self.learning_map)
