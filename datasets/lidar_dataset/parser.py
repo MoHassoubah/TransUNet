@@ -213,6 +213,8 @@ class SemanticKitti(Dataset):
         if self.gt:
           # map unused classes to used classes (also for projection)
           scan.sem_label = self.map(scan.sem_label, self.learning_map)
+          
+    if not (self.pretrain or self.evaluate):
         # make a tensor of the uncompressed data (with the max num points)
         unproj_n_points = scan.points.shape[0]
         unproj_xyz = torch.full((self.max_points, 3), -1.0, dtype=torch.float)
