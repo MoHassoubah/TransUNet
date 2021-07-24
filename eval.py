@@ -8,14 +8,14 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
-from trainer import trainer_kitti
+from trainer import trainer_kitti, eval_robust_to_noise_kitti
 
 from datasets.lidar_dataset.parser import Parser
 import yaml
 
 
 DATA_DIRECTORY = 'C:\lidar_datasets\kitti_data'     #'./data/GTA5' #should be the path of the kitti LiDAR data
-RESTORE_FROM_DIRECTORY = 'C:\msc_codes\proj_tansUnet\model\TU_Kitti64x1024\TU_pretrain_R50-ViT-B_16_skip3_epo150_bs5_64x1024'
+RESTORE_FROM_DIRECTORY = 'C:\msc_codes\proj_tansUnet\model\TU_Kitti64x1024\TU_pretrain_R50-ViT-B_16_skip3_epo150_bs5_64x1024\weights'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
@@ -52,8 +52,6 @@ parser.add_argument('--vit_patches_size', type=int,
 
 parser.add_argument('--pretrain', action='store_true', default=False, help='Enabling pretraining')
 parser.add_argument('--evaluate', action='store_true', default=False, help='Enabling evaluation')
-parser.add_argument('--drop_percentage', type=float,  default=0.2,
-                    help='drop this percentage from the PointCloud')
 parser.add_argument(
   '--data_kitti_cfg', '-dck',
   type=str,
@@ -167,7 +165,7 @@ if __name__ == "__main__":
         
     
     kitti_parser = Parser(root=args.root_path,
-                          train_sequences=None#training_sequences,
+                          train_sequences=None,#training_sequences,
                           valid_sequences=DATA_kitti["split"]["valid"],
                           test_sequences=None,
                           labels=DATA_kitti["labels"],
@@ -182,8 +180,7 @@ if __name__ == "__main__":
                           gt=True,
                           shuffle_train=True,
                           nuscenes_dataset=False,
-                          evaluate = True,
-                          drop_percentage=args.drop_percentage)
+                          evaluate = True)
                           
     args.num_classes = kitti_parser.get_n_classes()
 
@@ -211,6 +208,6 @@ if __name__ == "__main__":
     net.load_state_dict(new_params)
     ################
 
-    trainer = {'Kitti': trainer_kitti,}
+    eval = {'Kitti': eval_robust_to_noise_kitti,}
     
-    trainer[dataset_name](args, net, snapshot_path,kitti_parser)
+    eval[dataset_name](args, net, snapshot_path,kitti_parser)

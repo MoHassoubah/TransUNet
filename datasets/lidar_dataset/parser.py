@@ -209,7 +209,7 @@ class SemanticKitti(Dataset):
       scan.proj_sem_label = self.map(scan.proj_sem_label, self.learning_map)
 
     
-    if not self.pretrain:
+    if not (self.pretrain or self.evaluate):
         if self.gt:
           # map unused classes to used classes (also for projection)
           scan.sem_label = self.map(scan.sem_label, self.learning_map)
@@ -278,7 +278,7 @@ class SemanticKitti(Dataset):
 
     # return
     if self.evaluate:
-        return proj, proj_mask, proj_labels, reduced_proj, reduced_proj_mask, scan.rot_ang_around_z_axis, path_seq, path_name
+        return proj, proj_mask, proj_labels, reduced_proj, reduced_proj_mask, path_seq, path_name
     elif self.pretrain:
         return proj, proj_mask, reduced_proj, reduced_proj_mask, scan.rot_ang_around_z_axis, path_seq, path_name
     else:

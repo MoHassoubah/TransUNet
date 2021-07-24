@@ -72,7 +72,7 @@ class LaserScan:
 
     ### all the next variables changes depending if there is dropping or not
 
-    if(not self.pretrain):
+    if not (self.pretrain or self.evaluate):
         # unprojected range (list of depths for each point)
         self.unproj_range = np.zeros((0, 1), dtype=np.float32)
         # for each point, where it is in the range image
@@ -275,7 +275,7 @@ class LaserScan:
     proj_x *= self.proj_W                              # in [0.0, W]
     proj_y *= self.proj_H                              # in [0.0, H]
     
-    if not self.pretrain:
+    if not (self.pretrain or self.evaluate):
         # copy of depth in original order
         self.unproj_range = np.copy(depth)
 
@@ -284,13 +284,13 @@ class LaserScan:
     proj_x = np.floor(proj_x)
     proj_x = np.minimum(self.proj_W - 1, proj_x)
     proj_x = np.maximum(0, proj_x).astype(np.int32)   # in [0,W-1]
-    if not self.pretrain:
+    if not (self.pretrain or self.evaluate):
         self.proj_x = np.copy(proj_x)  # store a copy in orig order
 
     proj_y = np.floor(proj_y)
     proj_y = np.minimum(self.proj_H - 1, proj_y)
     proj_y = np.maximum(0, proj_y).astype(np.int32)   # in [0,H-1]
-    if not self.pretrain:
+    if not (self.pretrain or self.evaluate):
         self.proj_y = np.copy(proj_y)  # store a copy in original order
 
     # order in decreasing depth

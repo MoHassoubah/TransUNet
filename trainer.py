@@ -375,7 +375,7 @@ def eval_robust_to_noise_kitti(args, model, snapshot_path, parser):
     batch_size = args.batch_size * args.n_gpu
     # max_iterations = args.max_iterations
                           
-    print("The length of train set is: {}".format((parser.get_train_size())))
+    print("The length of train set is: {}".format((parser.get_valid_size())))
 
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
@@ -434,7 +434,7 @@ def eval_robust_to_noise_kitti(args, model, snapshot_path, parser):
                     print('%d validation iter processd' % index)
 
                 (image_batch, proj_mask, label_batch, reduced_image_batch, reduced_proj_mask, \
-                        rot_ang_around_z_axis_batch, path_seq, path_name) =  batch_data      
+                        path_seq, path_name) =  batch_data      
                         
                 reduced_image_batch, label_batch = reduced_image_batch.cuda(), label_batch.cuda(non_blocking=True).long()
                 # reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion 
@@ -454,9 +454,9 @@ def eval_robust_to_noise_kitti(args, model, snapshot_path, parser):
             
             iou.update(jaccard.item(), args.batch_size)#in_vol.size(0)) 
 
-        writer.add_scalar('eval/iou', iou.avg, drp_i)
+        writer.add_scalar('eval/iou', iou.avg, int(drp_i*100))
             
-        writer.add_scalar('eval/loss', val_losses.avg, drp_i)
+        writer.add_scalar('eval/loss', val_losses.avg, int(drp_i*100))
             
             
         ##############################################
