@@ -171,22 +171,14 @@ def trainer_kitti(args, model, snapshot_path, parser):
         
             if args.pretrain:
                 (image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, \
-                rot_ang_around_z_axis_batch, image_batch_2, proj_mask_2, reduced_image_batch_2,\
-                reduced_proj_mask_2, rot_ang_around_z_axis_batch_2,path_seq, path_name) =  batch_data
+                rot_ang_around_z_axis_batch ,path_seq, path_name) =  batch_data
             
                 image_batch = image_batch.to(device, non_blocking=True)
                 reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
-                # rot_ang_around_z_axis_batch = rot_ang_around_z_axis_batch.to(device, non_blocking=True).long()
-                
-                
-                # image_batch_2 = image_batch_2.to(device, non_blocking=True)
-                # reduced_image_batch_2 = reduced_image_batch_2.to(device, non_blocking=True) # Apply distortion
-                # rot_ang_around_z_axis_batch_2 = rot_ang_around_z_axis_batch_2.to(device, non_blocking=True).long()
                 
                 with torch.cuda.amp.autocast():
                 
-                    rot_prd, contrastive_prd, recon_prd, rot_w, contrastive_w, recons_w = model(reduced_image_batch)
-                    # rot_prd_2, contrastive_prd_2, recon_prd_2, _, _, _                         = model(reduced_image_batch_2)
+                    recon_prd, rot_w, contrastive_w, recons_w = model(reduced_image_batch)
                         
                     rot_p = None#torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)
                     rots = None#torch.cat([rot_ang_around_z_axis_batch, rot_ang_around_z_axis_batch_2], dim=0) 
@@ -293,22 +285,14 @@ def trainer_kitti(args, model, snapshot_path, parser):
                         
                     if args.pretrain:
                         (image_batch, proj_mask, reduced_image_batch, reduced_proj_mask, \
-                        rot_ang_around_z_axis_batch, image_batch_2, proj_mask_2, reduced_image_batch_2,\
-                        reduced_proj_mask_2, rot_ang_around_z_axis_batch_2,path_seq, path_name) =  batch_data
+                        rot_ang_around_z_axis_batch, path_seq, path_name) =  batch_data
                     
                         image_batch = image_batch.to(device, non_blocking=True)
                         reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
-                        # rot_ang_around_z_axis_batch = rot_ang_around_z_axis_batch.to(device, non_blocking=True).long()
-                        
-                        
-                        # image_batch_2 = image_batch_2.to(device, non_blocking=True)
-                        # reduced_image_batch_2 = reduced_image_batch_2.to(device, non_blocking=True) # Apply distortion
-                        # rot_ang_around_z_axis_batch_2 = rot_ang_around_z_axis_batch_2.to(device, non_blocking=True).long()
                         
                         with torch.cuda.amp.autocast():
                         
-                            rot_prd, contrastive_prd, recon_prd, rot_w, contrastive_w, recons_w = model(reduced_image_batch)
-                            # rot_prd_2, contrastive_prd_2, recon_prd_2, _, _, _                         = model(reduced_image_batch_2)
+                            recon_prd, rot_w, contrastive_w, recons_w = model(reduced_image_batch)
                                 
                             rot_p = None#torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)
                             rots = None#torch.cat([rot_ang_around_z_axis_batch, rot_ang_around_z_axis_batch_2], dim=0) 
@@ -325,7 +309,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
                             imgs = image_batch#torch.cat([image_batch, image_batch_2], dim=0) 
                             
                             loss, (loss1, loss2, loss3) = criterion(rot_p, rots, 
-                                                                contrastive_prd, None, 
+                                                                None, None, 
                                                                 imgs_recon, imgs, rot_w, contrastive_w, recons_w )
                                                                         
                         val_losses.update(loss.mean().item(), args.batch_size)

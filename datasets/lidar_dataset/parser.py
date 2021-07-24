@@ -260,59 +260,7 @@ class SemanticKitti(Dataset):
         reduced_proj = reduced_proj * reduced_proj_mask.float()
         
         
-    ################################
-    ### SCAN 2
-    ################################    
-    # open a semantic laserscan
-    if self.pretrain:  
-        if self.gt:
-          scan_2 = SemLaserScan(self.color_map,
-                                  project=True,
-                                  H=self.sensor_img_H,
-                                  W=self.sensor_img_W,
-                                  fov_up=self.sensor_fov_up,
-                                  fov_down=self.sensor_fov_down,
-                                  nuscenes_dataset=self.nuscenes_dataset,
-                                  pretrain= self.pretrain)
-        else:               
-          scan_2 = LaserScan(project=True,
-                               H=self.sensor_img_H,
-                               W=self.sensor_img_W,
-                               fov_up=self.sensor_fov_up,
-                               fov_down=self.sensor_fov_down,
-                               nuscenes_dataset=self.nuscenes_dataset,
-                               pretrain= self.pretrain)
-        
-        scan_2.set_points(scan.points, scan.remissions)#same point cloud
-        
-        
-        # get points and labels
-        proj_range_2 = torch.from_numpy(scan_2.proj_range).clone()
-        proj_xyz_2 = torch.from_numpy(scan_2.proj_xyz).clone()
-        proj_remission_2 = torch.from_numpy(scan_2.proj_remission).clone()
-        proj_mask_2 = torch.from_numpy(scan_2.proj_mask)
-                  
-            
-        proj_2 = torch.cat([proj_range_2.unsqueeze(0).clone(),
-                          proj_xyz_2.clone().permute(2, 0, 1),
-                          proj_remission_2.unsqueeze(0).clone()]) # TO create 4 channels image each channel carry sort of data (range,x,y,z,remission)
-        proj_2 = (proj_2 - self.sensor_img_means[:, None, None]
-                ) / self.sensor_img_stds[:, None, None]
-        proj_2 = proj_2 * proj_mask_2.float()
-        
-        # get points and labels
-        reduced_proj_range_2 = torch.from_numpy(scan_2.reduced_proj_range).clone()
-        reduced_proj_xyz_2 = torch.from_numpy(scan_2.reduced_proj_xyz).clone()
-        reduced_proj_remission_2 = torch.from_numpy(scan_2.reduced_proj_remission).clone()
-        reduced_proj_mask_2 = torch.from_numpy(scan_2.reduced_proj_mask)
-          
-            
-        reduced_proj_2 = torch.cat([reduced_proj_range_2.unsqueeze(0).clone(),
-                          reduced_proj_xyz_2.clone().permute(2, 0, 1),
-                          reduced_proj_remission_2.unsqueeze(0).clone()]) # TO create 4 channels image each channel carry sort of data (range,x,y,z,remission)
-        reduced_proj_2 = (reduced_proj_2 - self.sensor_img_means[:, None, None]
-                ) / self.sensor_img_stds[:, None, None]
-        reduced_proj_2 = reduced_proj_2 * reduced_proj_mask_2.float()
+    
 
     # get name and sequence
     path_norm = os.path.normpath(scan_file)
@@ -327,9 +275,7 @@ class SemanticKitti(Dataset):
     if not self.pretrain:
         return proj, proj_mask, proj_labels, unproj_labels, path_seq, path_name, proj_x, proj_y, proj_range, unproj_range, proj_xyz, unproj_xyz, proj_remission, unproj_remissions, unproj_n_points
     else:
-        return proj, proj_mask, reduced_proj, reduced_proj_mask, scan.rot_ang_around_z_axis, \
-        proj_2, proj_mask_2, reduced_proj_2, reduced_proj_mask_2,\
-        scan_2.rot_ang_around_z_axis, path_seq, path_name
+        return proj, proj_mask, reduced_proj, reduced_proj_mask, scan.rot_ang_around_z_axis, path_seq, path_name
         
         
   def __len__(self):
