@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
-from trainer import trainer_kitti, eval_robust_to_noise_kitti
+from evaluator import eval_robust_to_noise_kitti
 
 from datasets.lidar_dataset.parser import Parser
 import yaml
@@ -51,7 +51,16 @@ parser.add_argument('--vit_patches_size', type=int,
                     default=16, help='vit_patches_size, default is 16')
 
 parser.add_argument('--pretrain', action='store_true', default=False, help='Enabling pretraining')
-parser.add_argument('--evaluate', action='store_true', default=False, help='Enabling evaluation')
+parser.add_argument('--evaluate_noise_robustness', action='store_true', default=False, help='Enabling evaluation of noise robustness')
+parser.add_argument('--evaluate_uncertainity', action='store_true', default=False, help='Enabling evaluation of model uncertainity')
+parser.add_argument('--tau', default=1e-4, type=float, 
+                    help='constant data variance for Monte Carlo dropout.')
+parser.add_argument('--p', default=0.2, type=float, help='dropout rate')
+parser.add_argument('--num_samples', default=20, type=int, help='number of samples to collect with Monte Carlo dropout')
+parser.add_argument('--noise_variance', default=1e-4, type=float, 
+                    help='noise variance')
+parser.add_argument('--min_variance', default=1e-4, type=float, 
+                    help='min variance')
 parser.add_argument(
   '--data_kitti_cfg', '-dck',
   type=str,
@@ -191,7 +200,8 @@ if __name__ == "__main__":
     config_vit.n_skip = args.n_skip
     if args.vit_name.find('R50') != -1:
         config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
-    net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain).cuda()
+    net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain, drpout_rate=0.2, \ 
+    eval_uncer=True).cuda()
     # if args.pretrain:
         # net.apply(weights_init)
     # else:
@@ -208,6 +218,6 @@ if __name__ == "__main__":
     net.load_state_dict(new_params)
     ################
 
-    eval = {'Kitti': eval_robust_to_noise_kitti,}
+    eval = {'Kitti': eval_noise_robustness,}
     
     eval[dataset_name](args, net, snapshot_path,kitti_parser)

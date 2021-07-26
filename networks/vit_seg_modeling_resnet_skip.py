@@ -39,7 +39,7 @@ class PreActBottleneck(nn.Module):
     """Pre-activation (v2) bottleneck block.
     """
 
-    def __init__(self, cin, cout=None, cmid=None, stride=1):
+    def __init__(self, cin, cout=None, cmid=None, stride=1,dropout_rate=0.2, eval_uncer=False):
         super().__init__()
         cout = cout or cin
         cmid = cmid or cout//4
@@ -56,6 +56,9 @@ class PreActBottleneck(nn.Module):
             # Projection also with pre-activation according to paper.
             self.downsample = conv1x1(cin, cout, stride, bias=False)
             self.gn_proj = nn.GroupNorm(cout, cout)
+            
+        self.dropout = nn.Dropout2d(p=dropout_rate)
+        self.eval_uncer=eval_uncer
 
     def forward(self, x):
 
@@ -71,6 +74,8 @@ class PreActBottleneck(nn.Module):
         y = self.gn3(self.conv3(y))
 
         y = self.relu(residual + y)
+        if self.eval_uncer:
+            y = self.dropout(y)
         return y
 
     def load_from(self, weights, n_block, n_unit):
@@ -112,7 +117,7 @@ class PreActBottleneck(nn.Module):
 class ResNetV2(nn.Module):
     """Implementation of Pre-activation (v2) ResNet mode."""
 
-    def __init__(self, block_units, width_factor):
+    def __init__(self, block_units, width_factor,drp_out_rate=0.2,eval_uncer_f=False):
         super().__init__()
         width = int(64 * width_factor)
         self.width = width
@@ -127,16 +132,16 @@ class ResNetV2(nn.Module):
 
         self.body = nn.Sequential(OrderedDict([
             ('block1', nn.Sequential(OrderedDict( #wout=win
-                [('unit1', PreActBottleneck(cin=width, cout=width*4, cmid=width))] +
-                [(f'unit{i:d}', PreActBottleneck(cin=width*4, cout=width*4, cmid=width)) for i in range(2, block_units[0] + 1)],
+                [('unit1', PreActBottleneck(cin=width, cout=width*4, cmid=width, dropout_rate=drp_out_rate, eval_uncer=eval_uncer_f))] +
+                [(f'unit{i:d}', PreActBottleneck(cin=width*4, cout=width*4, cmid=width, dropout_rate=drp_out_rate, eval_uncer=eval_uncer_f)) for i in range(2, block_units[0] + 1)],
                 ))),
             ('block2', nn.Sequential(OrderedDict( #wout = (win +1)/2
-                [('unit1', PreActBottleneck(cin=width*4, cout=width*8, cmid=width*2, stride=2))] +
-                [(f'unit{i:d}', PreActBottleneck(cin=width*8, cout=width*8, cmid=width*2)) for i in range(2, block_units[1] + 1)],
+                [('unit1', PreActBottleneck(cin=width*4, cout=width*8, cmid=width*2, stride=2, dropout_rate=drp_out_rate, eval_uncer=eval_uncer_f))] +
+                [(f'unit{i:d}', PreActBottleneck(cin=width*8, cout=width*8, cmid=width*2, dropout_rate=drp_out_rate, eval_uncer=eval_uncer_f)) for i in range(2, block_units[1] + 1)],
                 ))),
             ('block3', nn.Sequential(OrderedDict( #wout = (win +1)/2
-                [('unit1', PreActBottleneck(cin=width*8, cout=width*16, cmid=width*4, stride=2))] +
-                [(f'unit{i:d}', PreActBottleneck(cin=width*16, cout=width*16, cmid=width*4)) for i in range(2, block_units[2] + 1)],
+                [('unit1', PreActBottleneck(cin=width*8, cout=width*16, cmid=width*4, stride=2, dropout_rate=drp_out_rate,eval_uncer=eval_uncer_f))] +
+                [(f'unit{i:d}', PreActBottleneck(cin=width*16, cout=width*16, cmid=width*4, dropout_rate=drp_out_rate, eval_uncer=eval_uncer_f)) for i in range(2, block_units[2] + 1)],
                 ))),
         ]))
 
