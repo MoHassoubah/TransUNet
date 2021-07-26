@@ -224,6 +224,10 @@ def one_hot_pred_from_label(y_pred, labels):
 def compute_log_likelihood(y_pred, y_true, sigma): #y_pred->batch_size*num_classes
     dist = torch.distributions.normal.Normal(loc=y_pred, scale=sigma)
     log_likelihood = dist.log_prob(y_true)#log_prob->Returns the log of the probability density/mass function evaluated at value.->batch_size*num_classes
+    # print('1st mean')
+    # print(torch.mean(log_likelihood, dim=3).shape)
+    # print('2nd mean')
+    # print(torch.mean(torch.mean(log_likelihood, dim=3),dim=2).shape)
     log_likelihood = torch.mean(torch.mean(torch.mean(log_likelihood, dim=3),dim=2), dim=1)# size batch_size
     return log_likelihood
 
@@ -232,7 +236,7 @@ def compute_brier_score(y_pred, y_true):
     https://papers.nips.cc/paper/7219-simple-and-scalable-predictive-uncertainty-estimation-using-deep-ensembles.pdf.
     The lower the Brier score is for a set of predictions, the better the predictions are calibrated."""        
         
-    brier_score = torch.mean((y_true-y_pred)**2, 1)
+    brier_score = torch.mean(torch.mean(torch.mean((y_true-y_pred)**2, dim=3),dim=2), dim=1)
     return brier_score
 
 def compute_preds(args, net, inputs, use_mcdo=False):
@@ -272,6 +276,7 @@ def evaluate_uncertainity(args, net, snapshot_path, parser, use_mcdo=True):
     brier_score = 0
     neg_log_likelihood = 0
     total = 0
+    correct_total=0
     outputs_variance = None
     
     ##############
@@ -279,6 +284,8 @@ def evaluate_uncertainity(args, net, snapshot_path, parser, use_mcdo=True):
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     logging.info(str(args))
+    
+    criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
     
     valid_loader = parser.get_valid_set()
     ##############
@@ -294,18 +301,33 @@ def evaluate_uncertainity(args, net, snapshot_path, parser, use_mcdo=True):
             inputs, targets = inputs.cuda(), targets.cuda(non_blocking=True).long()
             # reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion 
                 
+            # print("labels shape")
+            # print(targets.shape)
+            # print("inputs shape")
+            # print(inputs.shape)
             
             outputs_mean, model_variance = compute_preds(args, net, inputs, use_mcdo)
             
             if model_variance is not None:
                 outputs_variance = model_variance + args.tau
+                
+            
+            # print("outputs_mean shape")
+            # print(outputs_mean.shape)
+            # print("model_variance shape")
+            # print(model_variance.shape)
             
             # one_hot_targets = one_hot_pred_from_label(outputs_mean, targets)# for each image add 1 at the column of the targer class
             one_hot_targets = torch.nn.functional.one_hot(targets,parser.get_n_classes())
             one_hot_targets=one_hot_targets.permute(0,3,1,2)
+            # print("one_hot_targets shape")
+            # print(one_hot_targets.shape)
             # Compute negative log-likelihood (if variance estimate available)
             if outputs_variance is not None:
                 batch_log_likelihood = compute_log_likelihood(outputs_mean, one_hot_targets, outputs_variance)
+                
+                # print("Last mean shape")
+                # print(batch_log_likelihood.shape)
                 batch_neg_log_likelihood = -batch_log_likelihood
                 # Sum along batch dimension
                 neg_log_likelihood += torch.sum(batch_neg_log_likelihood, 0).cpu().numpy().item()
@@ -317,11 +339,14 @@ def evaluate_uncertainity(args, net, snapshot_path, parser, use_mcdo=True):
             
             # Compute loss
             loss = criterion(outputs_mean, targets)
-            test_loss += loss.item()
+            test_loss += loss.item()#alrady averged over number of batches
             
             # Compute predictions and numer of correct predictions
             _, predicted = outputs_mean.max(1)
+            # print("predicted shape")
+            # print(predicted.shape)
             total += targets.size(0)
+            correct_total += targets.size(0)*targets.size(1)*targets.size(2)
             correct += predicted.eq(targets).sum().item()
 
             # if args.show_bar and args.verbose:
@@ -329,16 +354,16 @@ def evaluate_uncertainity(args, net, snapshot_path, parser, use_mcdo=True):
                     # % (test_loss/(index+1), 100.*correct/total, correct, total))
                     
             
-            logging.info('Batch_index %d : Loss : %f, Acc : %f, (%d/%d)' % (index, (test_loss/(index+1), \
-            100.*correct/total, correct, total)))
+            logging.info('Batch_index %d : Loss : %f, Acc : %f, (%d/%d)' % (index, test_loss/(index+1), \
+            100.*correct/correct_total, correct, total))
 
-    accuracy = 100.*correct/total
+    accuracy = 100.*correct/correct_total
     brier_score = brier_score/total
     neg_log_likelihood = neg_log_likelihood/total
     
     logging.info('>>>>>>>>>>>>>>>>>>Final Results<<<<<<<<<<<<<<<<<<<<<<')
     
-    logging.info('Brier Score : %f, Acc : %f, Neg-Log-Likelihood : %f' % ((brier_score, \
-    accuracy, neg_log_likelihood)))
+    logging.info('Brier Score : %f, Acc : %f, Neg-Log-Likelihood : %f' % (brier_score, \
+    accuracy, neg_log_likelihood))
     return accuracy, brier_score, neg_log_likelihood
 

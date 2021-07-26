@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
-from evaluator import eval_robust_to_noise_kitti
+from evaluator import eval_noise_robustness, evaluate_uncertainity
 
 from datasets.lidar_dataset.parser import Parser
 import yaml
@@ -201,7 +201,7 @@ if __name__ == "__main__":
     if args.vit_name.find('R50') != -1:
         config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
     net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain,\
-    drpout_rate=args.p, eval_uncer=True).cuda()
+    dropout_rate=args.p, eval_uncer=True).cuda()
     
     # if args.pretrain:
         # net.apply(weights_init)

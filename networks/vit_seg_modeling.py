@@ -122,7 +122,7 @@ class Mlp(nn.Module):
 class Embeddings(nn.Module):
     """Construct the embeddings from patch, position embeddings.
     """
-    def __init__(self, config, img_size, in_channels=3,pretrain=False, drpout_rate=0.2,eval_uncer=False): #original in_channels = 3
+    def __init__(self, config, img_size, in_channels=3,pretrain=False, dropout_rate=0.2,eval_uncer=False): #original in_channels = 3
         super(Embeddings, self).__init__()
         self.hybrid = None
         self.pretrain=pretrain
@@ -155,7 +155,7 @@ class Embeddings(nn.Module):
 
         if self.hybrid:
             self.hybrid_model = ResNetV2(block_units=config.resnet.num_layers, width_factor=config.resnet.width_factor,\
-            drp_out_rate=drpout_rate, eval_uncer_f=eval_uncer)
+            drp_out_rate=dropout_rate, eval_uncer_f=eval_uncer)
             
             in_channels = self.hybrid_model.width * 16
         self.patch_embeddings = Conv2d(in_channels=in_channels,
@@ -302,11 +302,11 @@ class Encoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis,pretrain=False, drpout_rate=0.2,eval_uncer=False):
+    def __init__(self, config, img_size, vis,pretrain=False, dropout_rate=0.2,eval_uncer=False):
         super(Transformer, self).__init__()
         self.pretrain = pretrain
             
-        self.embeddings = Embeddings(config, img_size=img_size,pretrain=pretrain, drpout_rate=drpout_rate, eval_uncer=eval_uncer)
+        self.embeddings = Embeddings(config, img_size=img_size,pretrain=pretrain, dropout_rate=dropout_rate, eval_uncer=eval_uncer)
         self.encoder = Encoder(config, vis,pretrain=pretrain)
 
     def forward(self, input_ids):
@@ -454,15 +454,15 @@ class DecoderCup(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, pretrain=False, drpout_rate=0.2,eval_uncer=False):
+    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, pretrain=False, dropout_rate=0.2,eval_uncer=False):
         super(VisionTransformer, self).__init__()
         self.pretrain = pretrain
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
-        self.transformer = Transformer(config, img_size, vis,pretrain=pretrain, drpout_rate=drpout_rate ,eval_uncer=eval_uncer)
+        self.transformer = Transformer(config, img_size, vis,pretrain=pretrain, dropout_rate=dropout_rate ,eval_uncer=eval_uncer)
         # if self.pretrain:
-        self.decoder = DecoderCup(config, drpout_rate=drpout_rate, eval_uncer=eval_uncer)
+        self.decoder = DecoderCup(config, dropout_rate=dropout_rate, eval_uncer=eval_uncer)
         # else:
             # self.decoder_finetune = DecoderCup(config)
         if pretrain:
