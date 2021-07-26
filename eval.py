@@ -189,7 +189,7 @@ if __name__ == "__main__":
                           gt=True,
                           shuffle_train=True,
                           nuscenes_dataset=False,
-                          evaluate = True)
+                          evaluate = args.evaluate_noise_robustness)
                           
     args.num_classes = kitti_parser.get_n_classes()
 
@@ -200,8 +200,9 @@ if __name__ == "__main__":
     config_vit.n_skip = args.n_skip
     if args.vit_name.find('R50') != -1:
         config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
-    net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain, drpout_rate=0.2, \ 
-    eval_uncer=True).cuda()
+    net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain,\
+    drpout_rate=args.p, eval_uncer=True).cuda()
+    
     # if args.pretrain:
         # net.apply(weights_init)
     # else:
@@ -217,7 +218,12 @@ if __name__ == "__main__":
     
     net.load_state_dict(new_params)
     ################
+    if args.evaluate_noise_robustness:
+        evaluation_type='Noise_Robustness'
+    else:
+        evaluation_type='Uncertainity_Calculation'
+        
 
-    eval = {'Kitti': eval_noise_robustness,}
+    eval = {'Noise_Robustness': eval_noise_robustness,'Uncertainity_Calculation': evaluate_uncertainity,}
     
-    eval[dataset_name](args, net, snapshot_path,kitti_parser)
+    eval[evaluation_type](args, net, snapshot_path,kitti_parser)

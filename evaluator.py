@@ -265,7 +265,7 @@ def compute_preds(args, net, inputs, use_mcdo=False):
     return outputs_mean, model_variance
 
 
-def evaluate_uncertainity(args, net, parser, use_mcdo=True):
+def evaluate_uncertainity(args, net, snapshot_path, parser, use_mcdo=True):
     net.eval()
     test_loss = 0
     correct = 0
@@ -288,8 +288,7 @@ def evaluate_uncertainity(args, net, parser, use_mcdo=True):
             if index % 100 == 0:
                 print('%d validation iter processd' % index)
 
-            (inputs, proj_mask, targets, reduced_image_batch, reduced_proj_mask, \
-                    path_seq, path_name) =  batch_data
+            (inputs, proj_mask, targets, _, path_seq, path_name, _, _, _, _, _, _, _, _, _) = batch_data
                
                         
             inputs, targets = inputs.cuda(), targets.cuda(non_blocking=True).long()
