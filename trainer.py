@@ -173,11 +173,11 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 rot_ang_around_z_axis_batch,path_seq, path_name) =  batch_data
             
                 image_batch = image_batch.to(device, non_blocking=True)
-                reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
+                # reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
                 
                 with torch.cuda.amp.autocast():
                 
-                    recon_prd, rot_w, contrastive_w, recons_w = model(reduced_image_batch)
+                    recon_prd, rot_w, contrastive_w, recons_w = model(image_batch)
                         
                     rot_p = None#torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)
                     rots = None#torch.cat([rot_ang_around_z_axis_batch, rot_ang_around_z_axis_batch_2], dim=0) 
@@ -287,11 +287,11 @@ def trainer_kitti(args, model, snapshot_path, parser):
                         rot_ang_around_z_axis_batch,path_seq, path_name) =  batch_data
                     
                         image_batch = image_batch.to(device, non_blocking=True)
-                        reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
+                        # reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion
                         
                         with torch.cuda.amp.autocast():
                         
-                            recon_prd, rot_w, contrastive_w, recons_w = model(reduced_image_batch)
+                            recon_prd, rot_w, contrastive_w, recons_w = model(image_batch)
                             # rot_prd_2, contrastive_prd_2, recon_prd_2, _, _, _                         = model(reduced_image_batch_2)
                                 
                             rot_p = None#torch.cat([rot_prd, rot_prd_2], dim=0).squeeze(1)

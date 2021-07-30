@@ -190,7 +190,9 @@ if __name__ == "__main__":
     config_vit.n_skip = args.n_skip
     if args.vit_name.find('R50') != -1:
         config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
-    net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain, drpout_rate=0.2, \ 
+        
+    #after the '\' avoid adding any characters as this would raise error
+    net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain, dropout_rate=0.2,\
     eval_uncer=True).cuda()
     
     if args.pretrain:

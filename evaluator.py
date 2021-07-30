@@ -285,7 +285,7 @@ def evaluate_uncertainity(args, net, snapshot_path, parser, use_mcdo=True):
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     logging.info(str(args))
     
-    criterion = torch.nn.CrossEntropyLoss(ignore_index=255)
+    criterion = torch.nn.NLLLoss(ignore_index=255)#torch.nn.CrossEntropyLoss(ignore_index=255)
     
     valid_loader = parser.get_valid_set()
     ##############
@@ -338,8 +338,8 @@ def evaluate_uncertainity(args, net, snapshot_path, parser, use_mcdo=True):
             brier_score += torch.sum(batch_brier_score, 0).cpu().numpy().item()
             
             # Compute loss
-            loss = criterion(outputs_mean, targets)
-            test_loss += loss.item()#alrady averged over number of batches
+            loss = criterion(torch.log(outputs_mean.clamp(min=1e-8)), targets)#(outputs_mean, targets)
+            test_loss += loss.item()#alrady averged over batch size
             
             # Compute predictions and numer of correct predictions
             _, predicted = outputs_mean.max(1)
@@ -355,7 +355,7 @@ def evaluate_uncertainity(args, net, snapshot_path, parser, use_mcdo=True):
                     
             
             logging.info('Batch_index %d : Loss : %f, Acc : %f, (%d/%d)' % (index, test_loss/(index+1), \
-            100.*correct/correct_total, correct, total))
+            100.*correct/correct_total, correct, correct_total))
 
     accuracy = 100.*correct/correct_total
     brier_score = brier_score/total
