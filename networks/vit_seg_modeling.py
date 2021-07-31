@@ -170,20 +170,20 @@ class Embeddings(nn.Module):
         # print(x.shape)
         if self.hybrid:
             x, features = self.hybrid_model(x)
-            print("x, features = self.hybrid_model(x)")
-            print(x.shape)
+            # print("x, features = self.hybrid_model(x)")
+            # print(x.shape)
         else:
             features = None
         # print("x before batch embedding")
         # print(x.size())
         x = self.patch_embeddings(x)  # (B, hidden. n_patches^(1/2), n_patches^(1/2))
-        print("x = self.patch_embeddings(x)")
-        print(x.shape)
+        # print("x = self.patch_embeddings(x)")
+        # print(x.shape)
         retain_size_2 = x.size()[2]
         retain_size_3 = x.size()[3]
         x = x.flatten(2)
-        print("x = x.flatten(2)")
-        print(x.shape)
+        # print("x = x.flatten(2)")
+        # print(x.shape)
         x = x.transpose(-1, -2)  # (B, n_patches, hidden)
         # print("x = x.transpose(-1, -2)")
         # print(x.shape)
@@ -430,21 +430,21 @@ class UpBlock(nn.Module):
         self.dropout3 = nn.Dropout2d(p=dropout_rate)
 
     def forward(self, x, skip):
-        print("before shiffle x.shape")
-        print(x.shape)
+        # print("before shiffle x.shape")
+        # print(x.shape)
         upA = nn.PixelShuffle(2)(x) # kind of reshape
-        print("upA.shape")
-        print(upA.shape)
+        # print("upA.shape")
+        # print(upA.shape)
         if self.drop_out:
             upA = self.dropout1(upA)
 
         # print("upA.shape")
         # print(upA.shape)
-        print("skip.shape")
-        print(skip.shape)
+        # print("skip.shape")
+        # print(skip.shape)
         upB = torch.cat((upA,skip),dim=1)
-        print("x skip concat")
-        print(upB.shape)
+        # print("x skip concat")
+        # print(upB.shape)
         if self.drop_out:
             upB = self.dropout2(upB)
 
@@ -495,14 +495,14 @@ class DecoderCup(nn.Module):
         h, w = bfr_flat_size_2,bfr_flat_size_3
         x = hidden_states.permute(0, 2, 1)
         x = x.contiguous().view(B, hidden, h, w)
-        print("size before decoder processing")
-        print(x.shape)
+        # print("size before decoder processing")
+        # print(x.shape)
         up4e = self.upBlock1(x,features[0])
         up3e = self.upBlock2(up4e, features[1])
         up2e = self.upBlock3(up3e, features[2])
         up1e = self.upBlock4(up2e, features[3])
-        print("size after decoder processing")
-        print(up1e.shape)        
+        # print("size after decoder processing")
+        # print(up1e.shape)        
         return up1e
 
 
