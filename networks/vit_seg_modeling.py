@@ -154,10 +154,9 @@ class Embeddings(nn.Module):
             self.hybrid = False
 
         if self.hybrid:
-            self.hybrid_model = ResNetV2(block_units=config.resnet.num_layers, width_factor=config.resnet.width_factor,\
-            drp_out_rate=dropout_rate, eval_uncer_f=eval_uncer)
+            self.hybrid_model = ResNetV2()
             
-            in_channels = self.hybrid_model.width * 16
+            in_channels = self.hybrid_model.out_width# * 16
         self.patch_embeddings = Conv2d(in_channels=in_channels,
                                        out_channels=config.hidden_size,
                                        kernel_size=patch_size,
@@ -171,20 +170,20 @@ class Embeddings(nn.Module):
         # print(x.shape)
         if self.hybrid:
             x, features = self.hybrid_model(x)
-            # print("x, features = self.hybrid_model(x)")
-            # print(x.shape)
+            print("x, features = self.hybrid_model(x)")
+            print(x.shape)
         else:
             features = None
         # print("x before batch embedding")
         # print(x.size())
         x = self.patch_embeddings(x)  # (B, hidden. n_patches^(1/2), n_patches^(1/2))
-        # print("x = self.patch_embeddings(x)")
-        # print(x.shape)
+        print("x = self.patch_embeddings(x)")
+        print(x.shape)
         retain_size_2 = x.size()[2]
         retain_size_3 = x.size()[3]
         x = x.flatten(2)
-        # print("x = x.flatten(2)")
-        # print(x.shape)
+        print("x = x.flatten(2)")
+        print(x.shape)
         x = x.transpose(-1, -2)  # (B, n_patches, hidden)
         # print("x = x.transpose(-1, -2)")
         # print(x.shape)
@@ -346,59 +345,130 @@ class Conv2dReLU(nn.Sequential):
         super(Conv2dReLU, self).__init__(conv, bn, relu)
 
 
-class DecoderBlock(nn.Module):
-    def __init__(
-            self,
-            in_channels,
-            out_channels,
-            skip_channels=0,
-            use_batchnorm=True,
-            dropout_rate=0.2, eval_uncer=False,
-    ):
-        super().__init__()
-        self.conv1 = Conv2dReLU(
-            in_channels + skip_channels,
-            out_channels,
-            kernel_size=3,
-            padding=1,
-            use_batchnorm=use_batchnorm,
-        )
-        self.conv2 = Conv2dReLU(
-            out_channels,
-            out_channels,
-            kernel_size=3,
-            padding=1,
-            use_batchnorm=use_batchnorm,
-        )
-        self.up = nn.UpsamplingBilinear2d(scale_factor=2)
+# class DecoderBlock(nn.Module):
+    # def __init__(
+            # self,
+            # in_channels,
+            # out_channels,
+            # skip_channels=0,
+            # use_batchnorm=True,
+            # dropout_rate=0.2, eval_uncer=False,
+    # ):
+        # super().__init__()
+        # self.conv1 = Conv2dReLU(
+            # in_channels + skip_channels,
+            # out_channels,
+            # kernel_size=3,
+            # padding=1,
+            # use_batchnorm=use_batchnorm,
+        # )
+        # self.conv2 = Conv2dReLU(
+            # out_channels,
+            # out_channels,
+            # kernel_size=3,
+            # padding=1,
+            # use_batchnorm=use_batchnorm,
+        # )
+        # self.up = nn.UpsamplingBilinear2d(scale_factor=2)
         
+        # self.dropout1 = nn.Dropout2d(p=dropout_rate)
+
+        # self.dropout2 = nn.Dropout2d(p=dropout_rate)
+        
+        # self.dropout3 = nn.Dropout2d(p=dropout_rate)
+        # self.eval_uncer = eval_uncer
+
+    # def forward(self, x, skip=None):
+        # x = self.up(x)
+        # if self.eval_uncer:
+            # x = self.dropout1(x)
+            
+        # if skip is not None:
+            # # print("x size")
+            # # print(x.size())
+            # # print("skip size")
+            # # print(skip.size())
+            # x = torch.cat([x, skip], dim=1)
+            # if self.eval_uncer:
+                # x = self.dropout2(x)
+            # # print("cat size")
+            # # print(x.size())
+        # x = self.conv1(x)
+        # x = self.conv2(x)
+        # if self.eval_uncer:
+            # x = self.dropout3(x)
+        # return x
+
+class UpBlock(nn.Module):
+    def __init__(self, in_filters, out_filters, dropout_rate, drop_out=True):
+        super(UpBlock, self).__init__()
+        self.drop_out = drop_out
+        self.in_filters = in_filters
+        self.out_filters = out_filters
+
         self.dropout1 = nn.Dropout2d(p=dropout_rate)
 
         self.dropout2 = nn.Dropout2d(p=dropout_rate)
-        
-        self.dropout3 = nn.Dropout2d(p=dropout_rate)
-        self.eval_uncer = eval_uncer
 
-    def forward(self, x, skip=None):
-        x = self.up(x)
-        if self.eval_uncer:
-            x = self.dropout1(x)
-            
-        if skip is not None:
-            # print("x size")
-            # print(x.size())
-            # print("skip size")
-            # print(skip.size())
-            x = torch.cat([x, skip], dim=1)
-            if self.eval_uncer:
-                x = self.dropout2(x)
-            # print("cat size")
-            # print(x.size())
-        x = self.conv1(x)
-        x = self.conv2(x)
-        if self.eval_uncer:
-            x = self.dropout3(x)
-        return x
+        self.conv1 = nn.Conv2d(in_filters//4 + 2*out_filters, out_filters, (3,3), padding=1)
+        self.act1 = nn.LeakyReLU()
+        self.bn1 = nn.BatchNorm2d(out_filters)
+
+        self.conv2 = nn.Conv2d(out_filters, out_filters, (3,3),dilation=2, padding=2)
+        self.act2 = nn.LeakyReLU()
+        self.bn2 = nn.BatchNorm2d(out_filters)
+
+        self.conv3 = nn.Conv2d(out_filters, out_filters, (2,2), dilation=2,padding=1)
+        self.act3 = nn.LeakyReLU()
+        self.bn3 = nn.BatchNorm2d(out_filters)
+
+
+        self.conv4 = nn.Conv2d(out_filters*3,out_filters,kernel_size=(1,1))
+        self.act4 = nn.LeakyReLU()
+        self.bn4 = nn.BatchNorm2d(out_filters)
+
+        self.dropout3 = nn.Dropout2d(p=dropout_rate)
+
+    def forward(self, x, skip):
+        print("before shiffle x.shape")
+        print(x.shape)
+        upA = nn.PixelShuffle(2)(x) # kind of reshape
+        print("upA.shape")
+        print(upA.shape)
+        if self.drop_out:
+            upA = self.dropout1(upA)
+
+        # print("upA.shape")
+        # print(upA.shape)
+        print("skip.shape")
+        print(skip.shape)
+        upB = torch.cat((upA,skip),dim=1)
+        print("x skip concat")
+        print(upB.shape)
+        if self.drop_out:
+            upB = self.dropout2(upB)
+
+        upE = self.conv1(upB)
+        upE = self.act1(upE)
+        upE1 = self.bn1(upE)
+
+        upE = self.conv2(upE1)
+        upE = self.act2(upE)
+        upE2 = self.bn2(upE)
+
+        upE = self.conv3(upE2)
+        upE = self.act3(upE)
+        upE3 = self.bn3(upE)
+
+        concat = torch.cat((upE1,upE2,upE3),dim=1)
+        upE = self.conv4(concat)
+        upE = self.act4(upE)
+        upE = self.bn4(upE)
+        if self.drop_out:
+            upE = self.dropout3(upE)
+
+        return upE
+        
 
 
 class SegmentationHead(nn.Sequential):
@@ -412,45 +482,28 @@ class SegmentationHead(nn.Sequential):
 class DecoderCup(nn.Module):
     def __init__(self, config,dropout_rate=0.2, eval_uncer=False):
         super().__init__()
-        self.config = config
-        head_channels = 512
-        self.conv_more = Conv2dReLU(
-            config.hidden_size,  #*2 was removed as the concatenation after the transformer with the output of the resnet was removed
-            head_channels,
-            kernel_size=3,
-            padding=1,
-            use_batchnorm=True,
-        )
-        decoder_channels = config.decoder_channels
-        in_channels = [head_channels] + list(decoder_channels[:-1])
-        out_channels = decoder_channels
 
-        if self.config.n_skip != 0:
-            skip_channels = self.config.skip_channels
-            for i in range(4-self.config.n_skip):  # re-select the skip channels according to n_skip
-                skip_channels[3-i]=0
-
-        else:
-            skip_channels=[0,0,0,0]
-
-        blocks = [
-            DecoderBlock(in_ch, out_ch, sk_ch,dropout_rate=dropout_rate, eval_uncer=eval_uncer) for in_ch, out_ch, sk_ch in zip(in_channels, out_channels, skip_channels)
-        ]
-        self.blocks = nn.ModuleList(blocks)
+        self.upBlock1 = UpBlock(config.hidden_size, 4 * 32, 0.2)
+        self.upBlock2 = UpBlock(4 * 32, 4 * 32, 0.2)
+        self.upBlock3 = UpBlock(4 * 32, 2 * 32, 0.2)
+        self.upBlock4 = UpBlock(2 * 32, 32, 0.2, drop_out=False)
+        
+        self.last_layer_num_chs = 32
 
     def forward(self, hidden_states,bfr_flat_size_2,bfr_flat_size_3, features=None):
         B, n_patch, hidden = hidden_states.size()  # reshape from (B, n_patch, hidden) to (B, h, w, hidden)
         h, w = bfr_flat_size_2,bfr_flat_size_3
         x = hidden_states.permute(0, 2, 1)
         x = x.contiguous().view(B, hidden, h, w)
-        x = self.conv_more(x)
-        for i, decoder_block in enumerate(self.blocks):
-            if features is not None:
-                skip = features[i] if (i < self.config.n_skip) else None
-            else:
-                skip = None
-            x = decoder_block(x, skip=skip)
-        return x
+        print("size before decoder processing")
+        print(x.shape)
+        up4e = self.upBlock1(x,features[0])
+        up3e = self.upBlock2(up4e, features[1])
+        up2e = self.upBlock3(up3e, features[2])
+        up1e = self.upBlock4(up2e, features[3])
+        print("size after decoder processing")
+        print(up1e.shape)        
+        return up1e
 
 
 class VisionTransformer(nn.Module):
@@ -467,19 +520,19 @@ class VisionTransformer(nn.Module):
             # self.decoder_finetune = DecoderCup(config)
         if pretrain:
             self.recon_head = SegmentationHead(
-                in_channels=config['decoder_channels'][-1],
+                in_channels=self.decoder.last_layer_num_chs,
                 out_channels=5, #range,x,y,z,remission
                 kernel_size=3,
             )
             
             # create learnable parameters for the MTL task
-            self.rot_w = nn.Parameter(torch.tensor([1.0]))###>
+            self.rot_w = None#nn.Parameter(torch.tensor([1.0]))###>
             # self.rot_axis_w = nn.Parameter(torch.tensor([1.0]))###>
-            self.contrastive_w = nn.Parameter(torch.tensor([1.0]))###>
-            self.recons_w = nn.Parameter(torch.tensor([1.0]))###>
+            self.contrastive_w = None#nn.Parameter(torch.tensor([1.0]))###>
+            self.recons_w = None#nn.Parameter(torch.tensor([1.0]))###>
         else:
             self.segmentation_head = SegmentationHead(
-                in_channels=config['decoder_channels'][-1],
+                in_channels=self.decoder.last_layer_num_chs,
                 out_channels=config['n_classes'],
                 kernel_size=3,
                 )
