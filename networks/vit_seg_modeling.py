@@ -432,9 +432,11 @@ class DecoderCup(nn.Module):
 
         else:
             skip_channels=[0,0,0,0]
+            
+        dropout_flag_list = [eval_uncer,eval_uncer,eval_uncer,False]
 
         blocks = [
-            DecoderBlock(in_ch, out_ch, sk_ch,dropout_rate=dropout_rate, eval_uncer=eval_uncer) for in_ch, out_ch, sk_ch in zip(in_channels, out_channels, skip_channels)
+            DecoderBlock(in_ch, out_ch, sk_ch,dropout_rate=dropout_rate, eval_uncer=drpot_flag) for in_ch, out_ch, sk_ch, drpot_flag in zip(in_channels, out_channels, skip_channels, dropout_flag_list)
         ]
         self.blocks = nn.ModuleList(blocks)
 
