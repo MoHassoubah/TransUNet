@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
+from networks.SalsaNext import *
 from trainer import trainer_kitti
 
 from datasets.lidar_dataset.parser import Parser
@@ -192,25 +193,27 @@ if __name__ == "__main__":
         config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
         
     #after the '\' avoid adding any characters as this would raise error
-    net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain, dropout_rate=0.2,\
-    eval_uncer=True).cuda()
+    # net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain, dropout_rate=0.2,\
+    # eval_uncer=True).cuda()
+    net = SalsaNext(kitti_parser.get_n_classes()).cuda()
     
     if args.pretrain:
         net.apply(weights_init)
     else:
         # net.load_from(weights=np.load(config_vit.pretrained_path))
         
-        net.apply(weights_init)
-        #################
-        new_params = net.state_dict().copy()
-        saved_state_dict = torch.load(RESTORE_FROM_DIRECTORY + '\\' +args.restore_from+'.pth')
+        # net.apply(weights_init)
+        # #################
+        # new_params = net.state_dict().copy()
+        # saved_state_dict = torch.load(RESTORE_FROM_DIRECTORY + '\\' +args.restore_from+'.pth')
 
-        saved_state_dict = {k: v for k, v in saved_state_dict.items() if k in new_params}
-        new_params.update(saved_state_dict) 
+        # saved_state_dict = {k: v for k, v in saved_state_dict.items() if k in new_params}
+        # new_params.update(saved_state_dict) 
         
-        net.load_state_dict(new_params)
-        ################
+        # net.load_state_dict(new_params)
+        # ################
+        pass
 
     trainer = {'Kitti': trainer_kitti,}
     
-    trainer[dataset_name](args, net, snapshot_path,kitti_parser)
+    trainer[dataset_name](args, net, snapshot_path,kitti_parser,ARCH,DATA_kitti)
