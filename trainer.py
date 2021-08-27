@@ -356,7 +356,9 @@ def trainer_kitti(args, model, snapshot_path, parser,ARCH,DATA):
                         image_batch, label_batch = image_batch.cuda(), label_batch.cuda(non_blocking=True).long()
                         outputs = model(image_batch)
                         
-                        loss_ce = ce_loss(outputs, label_batch)
+                        # loss_ce = ce_loss(outputs, label_batch)
+            
+                        loss_ce = ce_loss(torch.log(outputs.clamp(min=1e-8)), label_batch) + ls(outputs, label_batch.long())
                         
                         
                         val_losses.update(loss_ce.mean().item(), args.batch_size)
