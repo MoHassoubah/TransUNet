@@ -1,0 +1,40 @@
+I believe these results has something to do with the redundency, less afected weights had more redundent signals
+
+epoch_43_restnet_transf_pretrain_dec_recon_only_no_scratch_44>>>
+Batch_index 813 : Loss : 2.770667, Acc : 33.526002, (89424416/4070)
+>>>>>>>>>>>>>>>>>>Final Results<<<<<<<<<<<<<<<<<<<<<<
+Brier Score : 0.036992, Acc : 33.526002, Neg-Log-Likelihood : 53156.818939
+
+--------------------------------------------
+epoch_35_resnrt_transformer_scratch_each_epoch_41_11>>>
+Batch_index 813 : Loss : 2.695210, Acc : 54.683496, (145858120/4070)
+>>>>>>>>>>>>>>>>>>Final Results<<<<<<<<<<<<<<<<<<<<<<
+Brier Score : 0.028997, Acc : 54.683496, Neg-Log-Likelihood : 9345.293444
+--------------------------------------------
+epoch_68_start_imgnet_weights_resnet_plus_trans_42_51>>>>
+Batch_index 813 : Loss : 1.192164, Acc : 64.769975, (172761939/266731520)
+>>>>>>>>>>>>>>>>>>Final Results<<<<<<<<<<<<<<<<<<<<<<
+Brier Score : 0.026413, Acc : 64.769975, Neg-Log-Likelihood : 7567.444961
+---------------------------------------------
+=============================
+using the new encoder/decoder
+=============================
+epoch_44_best_last_scratch_55_97_iter_430424_fr_scratch>>>>
+Batch_index 813 : Loss : 0.283204, Acc : 91.619852, (244379025/266731520)
+>>>>>>>>>>>>>>>>>>Final Results<<<<<<<<<<<<<<<<<<<<<<
+Brier Score : 0.006411, Acc : 91.619852, Neg-Log-Likelihood : 48142.211019
+----------------------------------------------
+epoch_35_comp_scr_55_98>>>>this is the pretrained version giving almost the same IoU score as the above scratch one
+[04:45:18.018] Batch_index 813 : Loss : 0.265072, Acc : 92.116532, (245703827/266731520)
+[04:45:21.317] >>>>>>>>>>>>>>>>>>Final Results<<<<<<<<<<<<<<<<<<<<<<
+[04:45:21.317] Brier Score : 0.005977, Acc : 92.116532, Neg-Log-Likelihood : 42810.711223
+----------------------------------------------
+epoch_60_best_57_54_bn_scratch>>>best pretrained version
+[09:43:41.365] Batch_index 813 : Loss : 0.268361, Acc : 92.057993, (245547685/266731520)
+[09:43:42.559] >>>>>>>>>>>>>>>>>>Final Results<<<<<<<<<<<<<<<<<<<<<<
+[09:43:42.559] Brier Score : 0.006054, Acc : 92.057993, Neg-Log-Likelihood : 45066.652357
+----------------------------------------------
+epoch_24_lowest_loss_0_2853_iou_55_28_bn_scratch>>>
+Batch_index 813 : Loss : 0.256604, Acc : 92.361876, (246358236/266731520)
+>>>>>>>>>>>>>>>>>>Final Results<<<<<<<<<<<<<<<<<<<<<<
+Brier Score : 0.005797, Acc : 92.361876, Neg-Log-Likelihood : 40028.780515
