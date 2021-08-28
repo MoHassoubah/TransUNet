@@ -11,6 +11,7 @@ import torch.optim as optim
 from tensorboardX import SummaryWriter
 from torch.nn.modules.loss import CrossEntropyLoss
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 from tqdm import tqdm
 from utils import DiceLoss
 from torchvision import transforms
@@ -254,7 +255,7 @@ def trainer_kitti(args, model, snapshot_path, parser,ARCH,DATA):
                 image_batch, label_batch = image_batch.cuda(), label_batch.cuda().long()
                 outputs = model(image_batch)
             
-                loss_ce = ce_loss(torch.log(outputs.clamp(min=1e-8)), label_batch) + ls(outputs, label_batch.long())
+                loss_ce = ce_loss(torch.log(F.softmax(outputs,dim=1).clamp(min=1e-8)), label_batch) + ls(F.softmax(outputs,dim=1), label_batch.long())
                 # loss_dice = dice_loss(outputs, label_batch, softmax=True)
                 loss = loss_ce 
                 
@@ -358,7 +359,7 @@ def trainer_kitti(args, model, snapshot_path, parser,ARCH,DATA):
                         
                         # loss_ce = ce_loss(outputs, label_batch)
             
-                        loss_ce = ce_loss(torch.log(outputs.clamp(min=1e-8)), label_batch) + ls(outputs, label_batch.long())
+                        loss_ce = ce_loss(torch.log(F.softmax(outputs,dim=1).clamp(min=1e-8)), label_batch) + ls(F.softmax(outputs,dim=1), label_batch.long())
                         
                         
                         val_losses.update(loss_ce.mean().item(), args.batch_size)

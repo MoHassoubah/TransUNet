@@ -16,7 +16,7 @@ import yaml
 
 
 DATA_DIRECTORY = 'C:\lidar_datasets\kitti_data'     #'./data/GTA5' #should be the path of the kitti LiDAR data
-RESTORE_FROM_DIRECTORY = 'C:\msc_codes\proj_tansUnet\model\TU_Kitti64x1024\TU_pretrain_R50-ViT-B_16_skip3_epo150_bs6_64x1024'
+RESTORE_FROM_DIRECTORY = 'C:\msc_codes\proj_tansUnet\model\TU_Kitti64x1024\TU_pretrain_R50-ViT-B_16_skip3_epo150_bs4_64x1024\weights'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
@@ -193,9 +193,9 @@ if __name__ == "__main__":
         config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
         
     #after the '\' avoid adding any characters as this would raise error
-    # net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain, dropout_rate=0.2,\
-    # eval_uncer=True).cuda()
-    net = SalsaNext(kitti_parser.get_n_classes()).cuda()
+    net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain, dropout_rate=0.2,\
+    eval_uncer=True).cuda()
+    # net = SalsaNext(kitti_parser.get_n_classes()).cuda()
     
     if args.pretrain:
         net.apply(weights_init)
@@ -204,13 +204,13 @@ if __name__ == "__main__":
         
         # net.apply(weights_init)
         # #################
-        # new_params = net.state_dict().copy()
-        # saved_state_dict = torch.load(RESTORE_FROM_DIRECTORY + '\\' +args.restore_from+'.pth')
+        new_params = net.state_dict().copy()
+        saved_state_dict = torch.load(RESTORE_FROM_DIRECTORY + '\\' +args.restore_from+'.pth')
 
-        # saved_state_dict = {k: v for k, v in saved_state_dict.items() if k in new_params}
-        # new_params.update(saved_state_dict) 
+        saved_state_dict = {k: v for k, v in saved_state_dict.items() if k in new_params}
+        new_params.update(saved_state_dict) 
         
-        # net.load_state_dict(new_params)
+        net.load_state_dict(new_params)
         # ################
         pass
 
