@@ -15,7 +15,7 @@ import yaml
 
 
 DATA_DIRECTORY = 'C:\lidar_datasets\kitti_data'     #'./data/GTA5' #should be the path of the kitti LiDAR data
-RESTORE_FROM_DIRECTORY = 'C:\msc_codes\proj_tansUnet\model\TU_Kitti64x1024\TU_pretrain_R50-ViT-B_16_skip3_epo150_bs6_64x1024'
+RESTORE_FROM_DIRECTORY = 'C:\msc_codes\proj_tansUnet\model\TU_Kitti64x1024\TU_pretrain_R50-ViT-B_16_skip3_epo150_bs4_64x1024\weights'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,

@@ -7,6 +7,7 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from tensorboardX import SummaryWriter
 from torch.nn.modules.loss import CrossEntropyLoss
@@ -25,6 +26,7 @@ import os, shutil
 from losses import MTL_loss
 import cv2
 from matplotlib import pyplot as plt
+from networks.Lovasz_Softmax import Lovasz_softmax
 
 
 
@@ -153,6 +155,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
     if args.n_gpu > 1:
         model = nn.DataParallel(model)
     ce_loss = torch.nn.CrossEntropyLoss(ignore_index=255)
+    ls = Lovasz_softmax(ignore=0).to(device)
     # dice_loss = DiceLoss(num_classes)
     optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
     writer = SummaryWriter(snapshot_path + '/log')
@@ -219,7 +222,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
                 image_batch, label_batch = image_batch.cuda(), label_batch.cuda(non_blocking=True).long()
                 outputs = model(image_batch)
             
-                loss_ce = ce_loss(outputs, label_batch)
+                loss_ce = ce_loss(outputs, label_batch) + ls(F.softmax(outputs, dim=1), label_batch)
                 # loss_dice = dice_loss(outputs, label_batch, softmax=True)
                 loss = loss_ce 
                 
@@ -319,7 +322,7 @@ def trainer_kitti(args, model, snapshot_path, parser):
                         image_batch, label_batch = image_batch.cuda(), label_batch.cuda(non_blocking=True).long()
                         outputs = model(image_batch)
                         
-                        loss_ce = ce_loss(outputs, label_batch)
+                        loss_ce = ce_loss(outputs, label_batch) + ls(F.softmax(outputs, dim=1), label_batch)
                         
                         
                         val_losses.update(loss_ce.mean().item(), args.batch_size)
