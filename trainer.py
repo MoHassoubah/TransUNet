@@ -157,14 +157,15 @@ def trainer_kitti(args, model, snapshot_path, parser):
     ce_loss = torch.nn.CrossEntropyLoss(ignore_index=255)
     ls = Lovasz_softmax(ignore=0).to(device)
     # dice_loss = DiceLoss(num_classes)
-    optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
     writer = SummaryWriter(snapshot_path + '/log')
-    iter_num = 0
+    iter_num = 459120
     max_epoch = args.max_epochs
     max_iterations = args.max_epochs * len(trainloader)  # max_epoch = max_iterations // len(trainloader) + 1
+    lr = base_lr * (1.0 - 459119 / max_iterations) ** 0.9
+    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9, weight_decay=0.0001)
     logging.info("{} iterations per epoch. {} max iterations ".format(len(trainloader), max_iterations))
     best_performance = 0.0
-    iterator = tqdm(range(max_epoch), ncols=70)
+    iterator = tqdm(range(48,max_epoch), ncols=70)
     for epoch_num in iterator:
         model.train()
         
