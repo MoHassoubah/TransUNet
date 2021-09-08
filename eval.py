@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
-from networks.SalsaNext import *
+# from networks.SalsaNext import *
 from evaluator import eval_noise_robustness, evaluate_uncertainity, eval_model
 
 from datasets.lidar_dataset.parser import Parser
