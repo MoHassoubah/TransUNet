@@ -47,22 +47,31 @@ def make_log_img(depth_gt, depth_gt_reduced, depth_pred, mask, mask_reduced, pre
         out_img = cv2.applyColorMap(
             depth_gt, get_mpl_colormap('viridis')) * mask[..., None] 
             
-        depth_gt_reduced = (cv2.normalize(depth_gt_reduced, None, alpha=0, beta=1,
-                               norm_type=cv2.NORM_MINMAX,
-                               dtype=cv2.CV_32F) * 255.0).astype(np.uint8)  
-        depth_reduced_img = cv2.applyColorMap(
-            depth_gt_reduced, get_mpl_colormap('viridis')) * mask_reduced[..., None]  
+        # depth_gt_reduced = (cv2.normalize(depth_gt_reduced, None, alpha=0, beta=1,
+                               # norm_type=cv2.NORM_MINMAX,
+                               # dtype=cv2.CV_32F) * 255.0).astype(np.uint8)  
+        # depth_reduced_img = cv2.applyColorMap(
+            # depth_gt_reduced, get_mpl_colormap('viridis')) * mask_reduced[..., None]  
             
-        out_img = np.concatenate([out_img, depth_reduced_img], axis=0)
+        # out_img = np.concatenate([out_img, depth_reduced_img], axis=0)
         
             
-        depth_pred = (cv2.normalize(np.float32(depth_pred), None, alpha=0, beta=1,
-                               norm_type=cv2.NORM_MINMAX,
-                               dtype=cv2.CV_32F) * 255.0).astype(np.uint8)  
-        depth_pred_img = cv2.applyColorMap(
-            depth_pred, get_mpl_colormap('viridis')) * mask[..., None]  
+        # depth_pred = (cv2.normalize(np.float32(depth_pred), None, alpha=0, beta=1,
+                               # norm_type=cv2.NORM_MINMAX,
+                               # dtype=cv2.CV_32F) * 255.0).astype(np.uint8)  
+        # depth_pred_img = cv2.applyColorMap(
+            # depth_pred, get_mpl_colormap('viridis')) * mask[..., None]  
             
-        out_img = np.concatenate([out_img, depth_pred_img], axis=0)
+        # out_img = np.concatenate([out_img, depth_pred_img], axis=0)
+        
+        
+        # make label prediction
+        pred_color = color_fn((pred * mask).astype(np.int32))
+            
+        out_img = np.concatenate([out_img, pred_color], axis=0)
+        
+        gt_color = color_fn(gt)
+        out_img = np.concatenate([out_img, gt_color], axis=0)
     
     else:
         # make label prediction
@@ -75,30 +84,136 @@ def make_log_img(depth_gt, depth_gt_reduced, depth_pred, mask, mask_reduced, pre
         
     return (out_img).astype(np.uint8)
     
-def save_img(depth_gt, depth_gt_reduced, depth_pred, proj_mask, proj_mask_reduced, seg_outputs, proj_labels, parser_to_color, i_iter, pretrain=False):
+def save_img(depth_gt, depth_gt_reduced, depth_pred, proj_mask, proj_mask_reduced, seg_outputs, proj_labels, parser_to_color, i_iter, eval=False):
     
     SAVE_PATH_kitti = '../result_train'
-    if not pretrain:
-        output = seg_outputs[0].permute(1,2,0).cpu().numpy()
-        output = np.asarray(np.argmax(output, axis=2), dtype=np.uint8)
+    # if eval:
+    output = seg_outputs[0].permute(1,2,0).cpu().numpy()
+    output = np.asarray(np.argmax(output, axis=2), dtype=np.uint8)
+    mask_np = proj_mask[0].cpu().numpy()
+    gt_np = proj_labels[0].cpu().numpy()
+    
+    depth_gt_np = depth_gt[0][0].cpu().numpy()
+    # depth_gt_reduced_np = depth_gt_reduced[0][0].cpu().numpy()
+    # depth_pred_np = depth_pred[0][0].cpu().numpy()
+    mask_np = proj_mask[0].cpu().numpy()
+    # mask_np_reduced =proj_mask_reduced[0].cpu().numpy()
+    out = make_log_img(depth_gt_np, depth_gt_reduced_np, None, mask_np, mask_np_reduced, output, parser_to_color, gt_np, pretrain=eval )
+    
+    
+    # else:
+        # output = seg_outputs[0].permute(1,2,0).cpu().numpy()
+        # output = np.asarray(np.argmax(output, axis=2), dtype=np.uint8)
         
         
-        mask_np = proj_mask[0].cpu().numpy()
-        gt_np = proj_labels[0].cpu().numpy()
-        out = make_log_img(None,None,None,mask_np,None, output, parser_to_color, gt_np, pretrain=args.pretrain )
-    else:
-        depth_gt_np = depth_gt[0][0].cpu().numpy()
-        depth_gt_reduced_np = depth_gt_reduced[0][0].cpu().numpy()
-        depth_pred_np = depth_pred[0][0].cpu().numpy()
-        mask_np = proj_mask[0].cpu().numpy()
-        mask_np_reduced =proj_mask_reduced[0].cpu().numpy()
-        out = make_log_img(depth_gt_np, depth_gt_reduced_np, depth_pred_np, mask_np, mask_np_reduced, None, parser_to_color, None, pretrain=pretrain )
+        # mask_np = proj_mask[0].cpu().numpy()
+        # gt_np = proj_labels[0].cpu().numpy()
+        # out = make_log_img(None,None,None,mask_np,None, output, parser_to_color, gt_np, pretrain=args.pretrain )
         
     # print(name)
     name_2_save = os.path.join(SAVE_PATH_kitti, '_'+str(i_iter) + '.png')
     cv2.imwrite(name_2_save, out)
         
+def eval_model(args, model, snapshot_path, parser):
+    from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
+    logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
+                        format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
+    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+    logging.info(str(args))
+    # base_lr = args.base_lr
+    num_classes = args.num_classes
+    batch_size = args.batch_size * args.n_gpu
+    # max_iterations = args.max_iterations
+                          
+    print("The length of train set is: {}".format((parser.get_valid_size())))
+
+    def worker_init_fn(worker_id):
+        random.seed(args.seed + worker_id)
+
+    # trainloader = parser.get_train_set()#DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)#,
+                             #worker_init_fn=worker_init_fn) #this gave the error Can't pickle local object 'trainer_synapse.<locals>.worker_init_fn'
     
+    ########################                         
+    valid_loader = parser.get_valid_set()
+    device = torch.device("cuda")
+    ignore_classes = [0]
+    evaluator = iouEval(parser.get_n_classes(),device, ignore_classes)
+    
+    
+    #Empty the TensorBoard directory
+    dir_path = snapshot_path+'/log'
+
+    try:
+        shutil.rmtree(dir_path)
+    except OSError as e:
+        print("Error: %s : %s" % (dir_path, e.strerror))
+        
+    #######################
+    
+
+    if args.n_gpu > 1:
+        model = nn.DataParallel(model)
+    ce_loss = torch.nn.CrossEntropyLoss(ignore_index=255)
+    # dice_loss = DiceLoss(num_classes)
+    # iter_num = 0
+    # max_epoch = args.max_epochs
+    # max_iterations = args.max_epochs * len(trainloader)  # max_epoch = max_iterations // len(trainloader) + 1
+    # logging.info("{} iterations per epoch. {} max iterations ".format(len(trainloader), max_iterations))
+    
+    iou = AverageMeter()
+            
+    ##############################################
+    ##############################################
+    
+    evaluator.reset()
+    iou.reset()
+    
+    val_losses = AverageMeter()
+    
+    model.eval()
+    iter_num = 0
+    
+    with torch.no_grad():
+        
+        for index, batch_data in enumerate(valid_loader):
+            if index % 100 == 0:
+                print('%d validation iter processd' % index)
+                
+            (inputs, proj_mask, targets, _, path_seq, path_name, _, _, _, _, _, _, _, _, _) = batch_data
+               
+                        
+            inputs, targets = inputs.cuda(), targets.cuda(non_blocking=True).long()
+            # reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion 
+            
+            outputs = model(inputs)
+            
+            argmax = outputs.argmax(dim=1)
+            
+            evaluator.addBatch(argmax, targets)
+            
+            # if iter_num % 50 == 0 and iter_num != 0:
+                # save_img(inputs, None, None, proj_mask, None, outputs, targets, parser.to_color, iter_num, eval=True)
+                
+            
+            iter_num = iter_num + 1
+        jaccard, class_jaccard = evaluator.getIoU()
+        
+        iou.update(jaccard.item(), args.batch_size)#in_vol.size(0)) 
+
+    
+    for i, jacc in enumerate(class_jaccard):
+        print('IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
+        i=i, class_str=parser.get_xentropy_class_string(i), jacc=round(jacc.item() * 100, 2)))
+    print('===> mIoU: ' + str(round(iou.avg * 100, 2)))
+        
+        
+        ##############################################
+        ##############################################
+
+
+    return "model evaluation Finished!"
+
+        
 def eval_noise_robustness(args, model, snapshot_path, parser):
     from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
     logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
@@ -254,6 +369,7 @@ def compute_preds(args, net, inputs, use_mcdo=False):
         net = set_training_mode_for_dropout(net, True)
         outputs = [net(inputs) for i in range(args.num_samples)]
         
+        # outputs_mean = [(outs) for outs in outputs]#we gone take mean after that so softmax here is must to make them same domain
         outputs_mean = [softmax(outs) for outs in outputs]#we gone take mean after that so softmax here is must to make them same domain
             
         outputs_mean = torch.stack(outputs_mean) # num_samples*batch_size*num_classes
