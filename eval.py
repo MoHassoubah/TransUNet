@@ -8,7 +8,8 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
-from evaluator import eval_noise_robustness, evaluate_uncertainity
+from networks.SalsaNext import *
+from evaluator import eval_noise_robustness, evaluate_uncertainity, eval_model
 
 from datasets.lidar_dataset.parser import Parser
 import yaml
@@ -53,6 +54,7 @@ parser.add_argument('--vit_patches_size', type=int,
 parser.add_argument('--pretrain', action='store_true', default=False, help='Enabling pretraining')
 parser.add_argument('--evaluate_noise_robustness', action='store_true', default=False, help='Enabling evaluation of noise robustness')
 parser.add_argument('--evaluate_uncertainity', action='store_true', default=False, help='Enabling evaluation of model uncertainity')
+parser.add_argument('--evaluate_model', action='store_true', default=False, help='Enabling evaluation of model iou')
 parser.add_argument('--tau', default=1e-4, type=float, 
                     help='constant data variance for Monte Carlo dropout.')
 parser.add_argument('--p', default=0.2, type=float, help='dropout rate')
@@ -203,6 +205,7 @@ if __name__ == "__main__":
     net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain,\
     dropout_rate=args.p, eval_uncer=True).cuda()
     
+    # net = SalsaNext(kitti_parser.get_n_classes()).cuda()
     # if args.pretrain:
         # net.apply(weights_init)
     # else:
@@ -210,20 +213,23 @@ if __name__ == "__main__":
         
         # net.apply(weights_init)
     #################
-    new_params = net.state_dict().copy()
+    # new_params = net.state_dict().copy()
     saved_state_dict = torch.load(RESTORE_FROM_DIRECTORY + '\\' +args.restore_from+'.pth')
 
-    saved_state_dict = {k: v for k, v in saved_state_dict.items() if k in new_params}
-    new_params.update(saved_state_dict) 
+    # saved_state_dict = {k: v for k, v in saved_state_dict.items() if k in new_params}
+    # new_params.update(saved_state_dict) 
     
-    net.load_state_dict(new_params)
+    net.load_state_dict(saved_state_dict)
     ################
     if args.evaluate_noise_robustness:
         evaluation_type='Noise_Robustness'
+    elif args.evaluate_model:
+        evaluation_type='eval_model_IoU'
+        
     else:
         evaluation_type='Uncertainity_Calculation'
         
 
-    eval = {'Noise_Robustness': eval_noise_robustness,'Uncertainity_Calculation': evaluate_uncertainity,}
+    eval = {'Noise_Robustness': eval_noise_robustness,'Uncertainity_Calculation': evaluate_uncertainity, 'eval_model_IoU': eval_model,}
     
     eval[evaluation_type](args, net, snapshot_path,kitti_parser)
