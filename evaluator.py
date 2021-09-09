@@ -161,12 +161,14 @@ def eval_model(args, model, snapshot_path, parser):
     # logging.info("{} iterations per epoch. {} max iterations ".format(len(trainloader), max_iterations))
     
     iou = AverageMeter()
+    accu = AverageMeter()
             
     ##############################################
     ##############################################
     
     evaluator.reset()
     iou.reset()
+    accu.reset()
     
     val_losses = AverageMeter()
     
@@ -197,14 +199,18 @@ def eval_model(args, model, snapshot_path, parser):
             
             iter_num = iter_num + 1
         jaccard, class_jaccard = evaluator.getIoU()
+        accura = evaluator.getacc()
         
         iou.update(jaccard.item(), args.batch_size)#in_vol.size(0)) 
+        accu.update(accura.item(), args.batch_size)#in_vol.size(0)) 
 
     
     for i, jacc in enumerate(class_jaccard):
         print('IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
         i=i, class_str=parser.get_xentropy_class_string(i), jacc=round(jacc.item() * 100, 2)))
     print('===> mIoU: ' + str(round(iou.avg * 100, 2)))
+    
+    print('===> mAccuracy: ' + str(round(accu.avg * 100, 2)))
         
         
         ##############################################
