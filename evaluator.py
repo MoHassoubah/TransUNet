@@ -136,7 +136,7 @@ def eval_model(args, model, snapshot_path, parser):
     ########################                         
     valid_loader = parser.get_valid_set()
     device = torch.device("cuda")
-    ignore_classes = [0]
+    ignore_classes = []
     evaluator = iouEval(parser.get_n_classes(),device, ignore_classes)
     
     
@@ -161,12 +161,14 @@ def eval_model(args, model, snapshot_path, parser):
     # logging.info("{} iterations per epoch. {} max iterations ".format(len(trainloader), max_iterations))
     
     iou = AverageMeter()
+    accu = AverageMeter()
             
     ##############################################
     ##############################################
     
     evaluator.reset()
     iou.reset()
+    accu.reset()
     
     val_losses = AverageMeter()
     
@@ -197,14 +199,18 @@ def eval_model(args, model, snapshot_path, parser):
             
             iter_num = iter_num + 1
         jaccard, class_jaccard = evaluator.getIoU()
+        accura = evaluator.getacc()
         
         iou.update(jaccard.item(), args.batch_size)#in_vol.size(0)) 
+        accu.update(accura.item(), args.batch_size)#in_vol.size(0)) 
 
     
     for i, jacc in enumerate(class_jaccard):
         print('IoU class {i:} [{class_str:}] = {jacc:.3f}'.format(
         i=i, class_str=parser.get_xentropy_class_string(i), jacc=round(jacc.item() * 100, 2)))
     print('===> mIoU: ' + str(round(iou.avg * 100, 2)))
+    
+    print('===> mAccuracy: ' + str(round(accu.avg * 100, 2)))
         
         
         ##############################################
@@ -369,7 +375,7 @@ def compute_preds(args, net, inputs, use_mcdo=False):
         net = set_training_mode_for_dropout(net, True)
         outputs = [net(inputs) for i in range(args.num_samples)]
         
-        outputs_mean = [(outs) for outs in outputs]#we gone take mean after that so softmax here is must to make them same domain
+        outputs_mean = outputs#[outs for outs in outputs]#we gone take mean after that so softmax here is must to make them same domain
         # outputs_mean = [softmax(outs) for outs in outputs]#we gone take mean after that so softmax here is must to make them same domain
             
         outputs_mean = torch.stack(outputs_mean) # num_samples*batch_size*num_classes
