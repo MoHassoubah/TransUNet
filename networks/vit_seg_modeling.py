@@ -412,20 +412,20 @@ class UpBlock(nn.Module):
 
         self.conv1 = nn.Conv2d(in_filters//4 + 2*out_filters, out_filters, (3,3), padding=1)
         self.act1 = nn.LeakyReLU()
-        self.bn1_ = nn.BatchNorm2d(out_filters)
+        self.bn1 = nn.BatchNorm2d(out_filters)
 
         self.conv2 = nn.Conv2d(out_filters, out_filters, (3,3),dilation=2, padding=2)
         self.act2 = nn.LeakyReLU()
-        self.bn2_ = nn.BatchNorm2d(out_filters)
+        self.bn2 = nn.BatchNorm2d(out_filters)
 
         self.conv3 = nn.Conv2d(out_filters, out_filters, (2,2), dilation=2,padding=1)
         self.act3 = nn.LeakyReLU()
-        self.bn3_ = nn.BatchNorm2d(out_filters)
+        self.bn3 = nn.BatchNorm2d(out_filters)
 
 
         self.conv4 = nn.Conv2d(out_filters*3,out_filters,kernel_size=(1,1))
         self.act4 = nn.LeakyReLU()
-        self.bn4_ = nn.BatchNorm2d(out_filters)
+        self.bn4 = nn.BatchNorm2d(out_filters)
 
         self.dropout3 = nn.Dropout2d(p=dropout_rate)
 
@@ -450,20 +450,20 @@ class UpBlock(nn.Module):
 
         upE = self.conv1(upB)
         upE = self.act1(upE)
-        upE1 = self.bn1_(upE)
+        upE1 = self.bn1(upE)
 
         upE = self.conv2(upE1)
         upE = self.act2(upE)
-        upE2 = self.bn2_(upE)
+        upE2 = self.bn2(upE)
 
         upE = self.conv3(upE2)
         upE = self.act3(upE)
-        upE3 = self.bn3_(upE)
+        upE3 = self.bn3(upE)
 
         concat = torch.cat((upE1,upE2,upE3),dim=1)
         upE = self.conv4(concat)
         upE = self.act4(upE)
-        upE = self.bn4_(upE)
+        upE = self.bn4(upE)
         if self.drop_out:
             upE = self.dropout3(upE)
 

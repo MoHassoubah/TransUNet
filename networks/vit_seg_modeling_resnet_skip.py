@@ -122,11 +122,11 @@ class ResContextBlock(nn.Module):
 
         self.conv2 = nn.Conv2d(out_filters, out_filters, (3,3), padding=1)
         self.act2 = nn.LeakyReLU()
-        self.bn1_ = nn.BatchNorm2d(out_filters)
+        self.bn1 = nn.BatchNorm2d(out_filters)
 
         self.conv3 = nn.Conv2d(out_filters, out_filters, (3,3),dilation=2, padding=2)
         self.act3 = nn.LeakyReLU()
-        self.bn2_ = nn.BatchNorm2d(out_filters)
+        self.bn2 = nn.BatchNorm2d(out_filters)
 
 
     def forward(self, x):
@@ -136,11 +136,11 @@ class ResContextBlock(nn.Module):
 
         resA = self.conv2(shortcut)
         resA = self.act2(resA)
-        resA1 = self.bn1_(resA)
+        resA1 = self.bn1(resA)
 
         resA = self.conv3(resA1)
         resA = self.act3(resA)
-        resA2 = self.bn2_(resA)
+        resA2 = self.bn2(resA)
 
         output = shortcut + resA2
         return output
@@ -157,19 +157,19 @@ class ResBlock(nn.Module):
 
         self.conv2 = nn.Conv2d(in_filters, out_filters, kernel_size=(3,3), padding=1)
         self.act2 = nn.LeakyReLU()
-        self.bn1_ = nn.BatchNorm2d(out_filters)
+        self.bn1 = nn.BatchNorm2d(out_filters)
 
         self.conv3 = nn.Conv2d(out_filters, out_filters, kernel_size=(3,3),dilation=2, padding=2)
         self.act3 = nn.LeakyReLU()
-        self.bn2_ = nn.BatchNorm2d(out_filters)
+        self.bn2 = nn.BatchNorm2d(out_filters)
 
         self.conv4 = nn.Conv2d(out_filters, out_filters, kernel_size=(2, 2), dilation=2, padding=1)
         self.act4 = nn.LeakyReLU()
-        self.bn3_ = nn.BatchNorm2d(out_filters)
+        self.bn3 = nn.BatchNorm2d(out_filters)
 
         self.conv5 = nn.Conv2d(out_filters*3, out_filters, kernel_size=(1, 1))
         self.act5 = nn.LeakyReLU()
-        self.bn4_ = nn.BatchNorm2d(out_filters)
+        self.bn4 = nn.BatchNorm2d(out_filters)
 
         if pooling:
             self.dropout = nn.Dropout2d(p=dropout_rate)
@@ -183,20 +183,20 @@ class ResBlock(nn.Module):
 
         resA = self.conv2(x)
         resA = self.act2(resA)
-        resA1 = self.bn1_(resA)
+        resA1 = self.bn1(resA)
 
         resA = self.conv3(resA1)
         resA = self.act3(resA)
-        resA2 = self.bn2_(resA)
+        resA2 = self.bn2(resA)
 
         resA = self.conv4(resA2)
         resA = self.act4(resA)
-        resA3 = self.bn3_(resA)
+        resA3 = self.bn3(resA)
 
         concat = torch.cat((resA1,resA2,resA3),dim=1)
         resA = self.conv5(concat)
         resA = self.act5(resA)
-        resA = self.bn4_(resA)
+        resA = self.bn4(resA)
         resA = shortcut + resA
 
 
