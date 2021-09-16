@@ -446,7 +446,8 @@ def evaluate_uncertainity(args, net, snapshot_path, parser, use_mcdo=True):
             # print(one_hot_targets.shape)
             # Compute negative log-likelihood (if variance estimate available)
             if outputs_variance is not None:
-                batch_log_likelihood = compute_log_likelihood(outputs_mean, one_hot_targets, outputs_variance)
+                outputs_sigma = torch.pow(outputs_variance, 0.5)
+                batch_log_likelihood = compute_log_likelihood(outputs_mean, one_hot_targets, outputs_sigma)
                 
                 # print("Last mean shape")
                 # print(batch_log_likelihood.shape)
