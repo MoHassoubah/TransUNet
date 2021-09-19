@@ -136,7 +136,7 @@ def eval_model(args, model, snapshot_path, parser):
     ########################                         
     valid_loader = parser.get_valid_set()
     device = torch.device("cuda")
-    ignore_classes = []
+    ignore_classes = [0]
     evaluator = iouEval(parser.get_n_classes(),device, ignore_classes)
     
     
