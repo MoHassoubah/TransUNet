@@ -17,7 +17,7 @@ from torch.nn import CrossEntropyLoss, Dropout, Softmax, Linear, Conv2d, LayerNo
 from torch.nn.modules.utils import _pair
 from scipy import ndimage
 from . import vit_seg_configs as configs
-from .vit_seg_modeling_resnet_skip import ResNetV2
+from .vit_seg_modeling_resnet_skip import ResNetV2,ResNetV2_transunet
 
 
 logger = logging.getLogger(__name__)
@@ -122,7 +122,7 @@ class Mlp(nn.Module):
 class Embeddings(nn.Module):
     """Construct the embeddings from patch, position embeddings.
     """
-    def __init__(self, config, img_size, in_channels=3,pretrain=False, dropout_rate=0.2,eval_uncer=False): #original in_channels = 3
+    def __init__(self, config, img_size, in_channels=3, bn_pretrain=False,pretrain=False, use_tranunet_enc_dec=False, dropout_rate=0.2,eval_uncer=False): #original in_channels = 3
         super(Embeddings, self).__init__()
         self.hybrid = None
         self.pretrain=pretrain
@@ -154,9 +154,15 @@ class Embeddings(nn.Module):
             self.hybrid = False
 
         if self.hybrid:
-            self.hybrid_model = ResNetV2()
+            if(use_tranunet_enc_dec):
+                self.hybrid_model = ResNetV2_transunet(block_units=config.resnet.num_layers, width_factor=config.resnet.width_factor,\
+                drp_out_rate=dropout_rate, eval_uncer_f=False)
+                in_channels = self.hybrid_model.width * 16
+            else:
+                self.hybrid_model = ResNetV2(bn_pretrain)
+                in_channels = self.hybrid_model.out_width# * 16
             
-            in_channels = self.hybrid_model.out_width# * 16
+            
         self.patch_embeddings = Conv2d(in_channels=in_channels,
                                        out_channels=config.hidden_size,
                                        kernel_size=patch_size,
@@ -301,11 +307,12 @@ class Encoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis,pretrain=False, dropout_rate=0.2,eval_uncer=False):
+    def __init__(self, config, img_size, vis, bn_pretrain=False,pretrain=False, use_tranunet_enc_dec=False, dropout_rate=0.2,eval_uncer=False):
         super(Transformer, self).__init__()
         self.pretrain = pretrain
             
-        self.embeddings = Embeddings(config, img_size=img_size,pretrain=pretrain, dropout_rate=dropout_rate, eval_uncer=eval_uncer)
+        self.embeddings = Embeddings(config, img_size=img_size, bn_pretrain=bn_pretrain,pretrain=pretrain, use_tranunet_enc_dec=use_tranunet_enc_dec,\
+        dropout_rate=dropout_rate, eval_uncer=eval_uncer)
         self.encoder = Encoder(config, vis,pretrain=pretrain)
 
     def forward(self, input_ids):
@@ -345,66 +352,14 @@ class Conv2dReLU(nn.Sequential):
         super(Conv2dReLU, self).__init__(conv, bn, relu)
 
 
-# class DecoderBlock(nn.Module):
-    # def __init__(
-            # self,
-            # in_channels,
-            # out_channels,
-            # skip_channels=0,
-            # use_batchnorm=True,
-            # dropout_rate=0.2, eval_uncer=False,
-    # ):
-        # super().__init__()
-        # self.conv1 = Conv2dReLU(
-            # in_channels + skip_channels,
-            # out_channels,
-            # kernel_size=3,
-            # padding=1,
-            # use_batchnorm=use_batchnorm,
-        # )
-        # self.conv2 = Conv2dReLU(
-            # out_channels,
-            # out_channels,
-            # kernel_size=3,
-            # padding=1,
-            # use_batchnorm=use_batchnorm,
-        # )
-        # self.up = nn.UpsamplingBilinear2d(scale_factor=2)
-        
-        # self.dropout1 = nn.Dropout2d(p=dropout_rate)
-
-        # self.dropout2 = nn.Dropout2d(p=dropout_rate)
-        
-        # self.dropout3 = nn.Dropout2d(p=dropout_rate)
-        # self.eval_uncer = eval_uncer
-
-    # def forward(self, x, skip=None):
-        # x = self.up(x)
-        # if self.eval_uncer:
-            # x = self.dropout1(x)
-            
-        # if skip is not None:
-            # # print("x size")
-            # # print(x.size())
-            # # print("skip size")
-            # # print(skip.size())
-            # x = torch.cat([x, skip], dim=1)
-            # if self.eval_uncer:
-                # x = self.dropout2(x)
-            # # print("cat size")
-            # # print(x.size())
-        # x = self.conv1(x)
-        # x = self.conv2(x)
-        # if self.eval_uncer:
-            # x = self.dropout3(x)
-        # return x
 
 class UpBlock(nn.Module):
-    def __init__(self, in_filters, out_filters, dropout_rate, drop_out=True):
+    def __init__(self, in_filters, out_filters, dropout_rate, drop_out=True, pretrain=False):
         super(UpBlock, self).__init__()
         self.drop_out = drop_out
         self.in_filters = in_filters
         self.out_filters = out_filters
+        self.pretrain = pretrain
 
         self.dropout1 = nn.Dropout2d(p=dropout_rate)
 
@@ -412,20 +367,35 @@ class UpBlock(nn.Module):
 
         self.conv1 = nn.Conv2d(in_filters//4 + 2*out_filters, out_filters, (3,3), padding=1)
         self.act1 = nn.LeakyReLU()
-        self.bn1_ = nn.BatchNorm2d(out_filters)
+        if pretrain:
+            self.bn1 = nn.BatchNorm2d(out_filters)
+        else:
+            self.bn1_ = nn.BatchNorm2d(out_filters)
 
         self.conv2 = nn.Conv2d(out_filters, out_filters, (3,3),dilation=2, padding=2)
         self.act2 = nn.LeakyReLU()
-        self.bn2_ = nn.BatchNorm2d(out_filters)
+        if pretrain:
+            self.bn2 = nn.BatchNorm2d(out_filters)
+        else:
+            self.bn2_ = nn.BatchNorm2d(out_filters)
+        
 
         self.conv3 = nn.Conv2d(out_filters, out_filters, (2,2), dilation=2,padding=1)
         self.act3 = nn.LeakyReLU()
-        self.bn3_ = nn.BatchNorm2d(out_filters)
+        if pretrain:
+            self.bn3 = nn.BatchNorm2d(out_filters)
+        else:
+            self.bn3_ = nn.BatchNorm2d(out_filters)
+        
 
 
         self.conv4 = nn.Conv2d(out_filters*3,out_filters,kernel_size=(1,1))
         self.act4 = nn.LeakyReLU()
-        self.bn4_ = nn.BatchNorm2d(out_filters)
+        if pretrain:
+            self.bn4 = nn.BatchNorm2d(out_filters)
+        else:
+            self.bn4_ = nn.BatchNorm2d(out_filters)
+        
 
         self.dropout3 = nn.Dropout2d(p=dropout_rate)
 
@@ -450,26 +420,40 @@ class UpBlock(nn.Module):
 
         upE = self.conv1(upB)
         upE = self.act1(upE)
-        upE1 = self.bn1_(upE)
+        if self.pretrain:
+            upE1 = self.bn1(upE)
+        else:
+            upE1 = self.bn1_(upE)
 
         upE = self.conv2(upE1)
         upE = self.act2(upE)
-        upE2 = self.bn2_(upE)
+        if self.pretrain:
+            upE2 = self.bn2(upE)
+        else:
+            upE2 = self.bn2_(upE)
+        
 
         upE = self.conv3(upE2)
         upE = self.act3(upE)
-        upE3 = self.bn3_(upE)
+        if self.pretrain:
+            upE3 = self.bn3(upE)
+        else:
+            upE3 = self.bn3_(upE)
+        
 
         concat = torch.cat((upE1,upE2,upE3),dim=1)
         upE = self.conv4(concat)
         upE = self.act4(upE)
-        upE = self.bn4_(upE)
+        if self.pretrain:
+            upE = self.bn4(upE)
+        else:
+            upE = self.bn4_(upE)
+        
         if self.drop_out:
             upE = self.dropout3(upE)
 
         return upE
         
-
 
 class SegmentationHead(nn.Sequential):
 
@@ -480,13 +464,14 @@ class SegmentationHead(nn.Sequential):
 
 
 class DecoderCup(nn.Module):
-    def __init__(self, config,dropout_rate=0.2, eval_uncer=False):
+    def __init__(self, config, pretrain):
         super().__init__()
+        
 
-        self.upBlock1 = UpBlock(config.hidden_size, 4 * 32, 0.2)
-        self.upBlock2 = UpBlock(4 * 32, 4 * 32, 0.2)
-        self.upBlock3 = UpBlock(4 * 32, 2 * 32, 0.2)
-        self.upBlock4 = UpBlock(2 * 32, 32, 0.2, drop_out=False)
+        self.upBlock1 = UpBlock(config.hidden_size, 4 * 32, 0.2, pretrain=pretrain)
+        self.upBlock2 = UpBlock(4 * 32, 4 * 32, 0.2, pretrain=pretrain)
+        self.upBlock3 = UpBlock(4 * 32, 2 * 32, 0.2, pretrain=pretrain)
+        self.upBlock4 = UpBlock(2 * 32, 32, 0.2, drop_out=False, pretrain=pretrain)
         
         self.last_layer_num_chs = 32
 
@@ -506,21 +491,131 @@ class DecoderCup(nn.Module):
         return up1e
 
 
+class DecoderBlock(nn.Module):
+    def __init__(
+            self,
+            in_channels,
+            out_channels,
+            skip_channels=0,
+            use_batchnorm=True,
+            dropout_rate=0.2, eval_uncer=False,
+    ):
+        super().__init__()
+        self.conv1 = Conv2dReLU(
+            in_channels + skip_channels,
+            out_channels,
+            kernel_size=3,
+            padding=1,
+            use_batchnorm=use_batchnorm,
+        )
+        self.conv2 = Conv2dReLU(
+            out_channels,
+            out_channels,
+            kernel_size=3,
+            padding=1,
+            use_batchnorm=use_batchnorm,
+        )
+        self.up = nn.UpsamplingBilinear2d(scale_factor=2)
+        
+        self.dropout1 = nn.Dropout2d(p=dropout_rate)
+
+        self.dropout2 = nn.Dropout2d(p=dropout_rate)
+        
+        self.dropout3 = nn.Dropout2d(p=dropout_rate)
+        self.eval_uncer = eval_uncer
+
+    def forward(self, x, skip=None):
+        x = self.up(x)
+        if self.eval_uncer:
+            x = self.dropout1(x)
+            
+        if skip is not None:
+            # print("x size")
+            # print(x.size())
+            # print("skip size")
+            # print(skip.size())
+            x = torch.cat([x, skip], dim=1)
+            if self.eval_uncer:
+                x = self.dropout2(x)
+            # print("cat size")
+            # print(x.size())
+        x = self.conv1(x)
+        x = self.conv2(x)
+        if self.eval_uncer:
+            x = self.dropout3(x)
+        return x
+        
+class DecoderCup_TransUnet(nn.Module):
+    def __init__(self, config,dropout_rate=0.2, eval_uncer=False):
+        super().__init__()
+        self.config = config
+        head_channels = 512
+        self.conv_more = Conv2dReLU(
+            config.hidden_size,  #*2 was removed as the concatenation after the transformer with the output of the resnet was removed
+            head_channels,
+            kernel_size=3,
+            padding=1,
+            use_batchnorm=True,
+        )
+        decoder_channels = config.decoder_channels
+        in_channels = [head_channels] + list(decoder_channels[:-1])
+        out_channels = decoder_channels
+
+        if self.config.n_skip != 0:
+            skip_channels = self.config.skip_channels
+            for i in range(4-self.config.n_skip):  # re-select the skip channels according to n_skip
+                skip_channels[3-i]=0
+
+        else:
+            skip_channels=[0,0,0,0]
+            
+        dropout_flag_list = [eval_uncer,eval_uncer,eval_uncer,False]
+
+        blocks = [
+            DecoderBlock(in_ch, out_ch, sk_ch,dropout_rate=dropout_rate, eval_uncer=False) \
+            for in_ch, out_ch, sk_ch, drpot_flag in zip(in_channels, out_channels, skip_channels, dropout_flag_list)
+        ]
+        self.blocks = nn.ModuleList(blocks)
+        
+    def forward(self, hidden_states,bfr_flat_size_2,bfr_flat_size_3, features=None):
+        B, n_patch, hidden = hidden_states.size()  # reshape from (B, n_patch, hidden) to (B, h, w, hidden)
+        h, w = bfr_flat_size_2,bfr_flat_size_3
+        x = hidden_states.permute(0, 2, 1)
+        x = x.contiguous().view(B, hidden, h, w)
+        x = self.conv_more(x)
+        for i, decoder_block in enumerate(self.blocks):
+            if features is not None:
+                skip = features[i] if (i < self.config.n_skip) else None
+            else:
+                skip = None
+            x = decoder_block(x, skip=skip)
+        return x
+
+
+
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, pretrain=False, dropout_rate=0.2,eval_uncer=False):
+    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, bn_pretrain=False, pretrain=False, \
+    use_tranunet_enc_dec=False, dropout_rate=0.2,eval_uncer=False):
         super(VisionTransformer, self).__init__()
         self.pretrain = pretrain
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
-        self.transformer = Transformer(config, img_size, vis,pretrain=pretrain, dropout_rate=dropout_rate ,eval_uncer=eval_uncer)
+        self.transformer = Transformer(config, img_size, vis, bn_pretrain=bn_pretrain,pretrain=pretrain, use_tranunet_enc_dec=use_tranunet_enc_dec,\
+        dropout_rate=dropout_rate ,eval_uncer=eval_uncer)
         # if self.pretrain:
-        self.decoder = DecoderCup(config, dropout_rate=dropout_rate, eval_uncer=eval_uncer)
+        if(use_tranunet_enc_dec):
+            self.decoder = DecoderCup_TransUnet(config, dropout_rate=dropout_rate, eval_uncer=eval_uncer)
+            in_chs=  config['decoder_channels'][-1]
+        else:
+            self.decoder = DecoderCup(config, bn_pretrain)
+            in_chs= self.decoder.last_layer_num_chs
         # else:
             # self.decoder_finetune = DecoderCup(config)
         if pretrain:
+           
             self.recon_head = SegmentationHead(
-                in_channels=self.decoder.last_layer_num_chs,
+                in_channels=in_chs,
                 out_channels=5, #range,x,y,z,remission
                 kernel_size=3,
             )
@@ -532,7 +627,7 @@ class VisionTransformer(nn.Module):
             self.recons_w = None#nn.Parameter(torch.tensor([1.0]))###>
         else:
             self.segmentation_head = SegmentationHead(
-                in_channels=self.decoder.last_layer_num_chs,
+                in_channels=in_chs,
                 out_channels=config['n_classes'],
                 kernel_size=3,
                 )

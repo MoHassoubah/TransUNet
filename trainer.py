@@ -103,7 +103,7 @@ def save_img(depth_gt, depth_gt_reduced, depth_pred, proj_mask, proj_mask_reduce
 
 
     
-def trainer_kitti(args, model, snapshot_path, parser,ARCH,DATA):
+def trainer_kitti(args, model, snapshot_path, parser, use_salsa,ARCH=None,DATA=None):
     from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
     logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
@@ -157,39 +157,43 @@ def trainer_kitti(args, model, snapshot_path, parser,ARCH,DATA):
     
     if args.n_gpu > 1:
         model = nn.DataParallel(model)
-    # ce_loss = torch.nn.CrossEntropyLoss(ignore_index=255)
-    
-    
-    epsilon_w = ARCH["train"]["epsilon_w"]
-    content = torch.zeros(parser.get_n_classes(), dtype=torch.float)
-    for cl, freq in DATA["content"].items():
-        x_cl = parser.to_xentropy(cl)  # map actual class to xentropy class
-        content[x_cl] += freq
-    loss_w = 1 / (content + epsilon_w)  # get weights
-    for x_cl, w in enumerate(loss_w):  # ignore the ones necessary to ignore
-        if DATA["learning_ignore"][x_cl]:
-            # don't weigh
-            loss_w[x_cl] = 0
-    print("Loss weights from content: ", loss_w.data)
-    
-    ce_loss = nn.NLLLoss(weight=loss_w).to(device)
     ls = Lovasz_softmax(ignore=0).to(device)
-    # dice_loss = DiceLoss(num_classes)
-    # optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
-    optimizer = optim.SGD([{'params': model.parameters()}],
-                                   lr=ARCH["train"]["lr"],
-                                   momentum=ARCH["train"]["momentum"],
-                                   weight_decay=ARCH["train"]["w_decay"])
-    # Use warmup learning rate
-    # post decay and step sizes come in epochs and we want it in steps
-    steps_per_epoch = parser.get_train_size()
-    up_steps = int(ARCH["train"]["wup_epochs"] * steps_per_epoch)
-    final_decay = ARCH["train"]["lr_decay"] ** (1 / steps_per_epoch)
-    scheduler = warmupLR(optimizer=optimizer,
-                              lr=ARCH["train"]["lr"],
-                              warmup_steps=up_steps,
-                              momentum=ARCH["train"]["momentum"],
-                              decay=final_decay)
+    
+    if(use_salsa):
+        epsilon_w = ARCH["train"]["epsilon_w"]
+        content = torch.zeros(parser.get_n_classes(), dtype=torch.float)
+        for cl, freq in DATA["content"].items():
+            x_cl = parser.to_xentropy(cl)  # map actual class to xentropy class
+            content[x_cl] += freq
+        loss_w = 1 / (content + epsilon_w)  # get weights
+        for x_cl, w in enumerate(loss_w):  # ignore the ones necessary to ignore
+            if DATA["learning_ignore"][x_cl]:
+                # don't weigh
+                loss_w[x_cl] = 0
+        print("Loss weights from content: ", loss_w.data)
+
+        ce_loss = nn.NLLLoss(weight=loss_w).to(device)    
+        
+        optimizer = optim.SGD([{'params': model.parameters()}],
+                                       lr=ARCH["train"]["lr"],
+                                       momentum=ARCH["train"]["momentum"],
+                                       weight_decay=ARCH["train"]["w_decay"])
+        # Use warmup learning rate
+        # post decay and step sizes come in epochs and we want it in steps
+        steps_per_epoch = parser.get_train_size()
+        up_steps = int(ARCH["train"]["wup_epochs"] * steps_per_epoch)
+        final_decay = ARCH["train"]["lr_decay"] ** (1 / steps_per_epoch)
+        scheduler = warmupLR(optimizer=optimizer,
+                                  lr=ARCH["train"]["lr"],
+                                  warmup_steps=up_steps,
+                                  momentum=ARCH["train"]["momentum"],
+                                  decay=final_decay)
+    else:
+        ce_loss = torch.nn.CrossEntropyLoss(ignore_index=255)
+            
+        # dice_loss = DiceLoss(num_classes)
+        optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
+
                               
     writer = SummaryWriter(snapshot_path + '/log')
     iter_num = 0
@@ -252,10 +256,13 @@ def trainer_kitti(args, model, snapshot_path, parser,ARCH,DATA):
             else:
                 (image_batch, proj_mask, label_batch, _, path_seq, path_name, _, _, _, _, _, _, _, _, _) = batch_data
                 
-                image_batch, label_batch = image_batch.cuda(), label_batch.cuda().long()
+                image_batch, label_batch = image_batch.cuda(), label_batch.cuda(non_blocking=True).long()
                 outputs = model(image_batch)
             
-                loss_ce = ce_loss(torch.log(F.softmax(outputs,dim=1).clamp(min=1e-8)), label_batch) + ls(F.softmax(outputs,dim=1), label_batch.long())
+                if(use_salsa):
+                    loss_ce = ce_loss(torch.log(outputs.clamp(min=1e-8)), label_batch) + ls(outputs, label_batch.long())
+                else:
+                    loss_ce = ce_loss(outputs, label_batch) + ls(F.softmax(outputs, dim=1), label_batch)
                 # loss_dice = dice_loss(outputs, label_batch, softmax=True)
                 loss = loss_ce 
                 
@@ -275,16 +282,18 @@ def trainer_kitti(args, model, snapshot_path, parser,ARCH,DATA):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            # step scheduler
-            scheduler.step()
-            
-            # lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9
-            # for param_group in optimizer.param_groups:
-                # param_group['lr'] = lr_
+            if(use_salsa):
+                # step scheduler
+                scheduler.step()
+            else:
+                lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = lr_
                 
 
             iter_num = iter_num + 1
-            # writer.add_scalar('info/lr', lr_, iter_num)
+            if(use_salsa==False):
+                writer.add_scalar('info/lr', lr_, iter_num)
             writer.add_scalar('info/loss', loss, iter_num)
 
             # if iter_num % 20 == 0:
@@ -359,8 +368,11 @@ def trainer_kitti(args, model, snapshot_path, parser,ARCH,DATA):
                         
                         # loss_ce = ce_loss(outputs, label_batch)
             
-                        loss_ce = ce_loss(torch.log(F.softmax(outputs,dim=1).clamp(min=1e-8)), label_batch) + ls(F.softmax(outputs,dim=1), label_batch.long())
                         
+                        if(use_salsa):
+                            loss_ce = ce_loss(torch.log(outputs.clamp(min=1e-8)), label_batch) + ls(outputs, label_batch.long())
+                        else:
+                            loss_ce = ce_loss(outputs, label_batch) + ls(F.softmax(outputs, dim=1), label_batch)
                         
                         val_losses.update(loss_ce.mean().item(), args.batch_size)
                         

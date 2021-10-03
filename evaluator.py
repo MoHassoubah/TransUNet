@@ -114,7 +114,7 @@ def save_img(depth_gt, depth_gt_reduced, depth_pred, proj_mask, proj_mask_reduce
     name_2_save = os.path.join(SAVE_PATH_kitti, '_'+str(i_iter) + '.png')
     cv2.imwrite(name_2_save, out)
         
-def eval_model(args, model, snapshot_path, parser):
+def eval_model(args, model, snapshot_path, parser, use_salsa=False):
     from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
     logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
@@ -220,7 +220,7 @@ def eval_model(args, model, snapshot_path, parser):
     return "model evaluation Finished!"
 
         
-def eval_noise_robustness(args, model, snapshot_path, parser):
+def eval_noise_robustness(args, model, snapshot_path, parser, use_salsa=False):
     from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
     logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
@@ -360,7 +360,7 @@ def compute_brier_score(y_pred, y_true):
     brier_score = torch.mean(torch.mean(torch.mean((y_true-y_pred)**2, dim=3),dim=2), dim=1)
     return brier_score
 
-def compute_preds(args, net, inputs, use_mcdo=False):
+def compute_preds(args, net, inputs, use_salsa, use_mcdo=False):
     
     model_variance = None
     
@@ -375,8 +375,10 @@ def compute_preds(args, net, inputs, use_mcdo=False):
         net = set_training_mode_for_dropout(net, True)
         outputs = [net(inputs) for i in range(args.num_samples)]
         
-        outputs_mean = outputs#[outs for outs in outputs]#we gone take mean after that so softmax here is must to make them same domain
-        # outputs_mean = [softmax(outs) for outs in outputs]#we gone take mean after that so softmax here is must to make them same domain
+        if(use_salsa):
+            outputs_mean = outputs#[outs for outs in outputs]#we gone take mean after that so softmax here is must to make them same domain
+        else:
+            outputs_mean = [softmax(outs) for outs in outputs]#we gone take mean after that so softmax here is must to make them same domain
             
         outputs_mean = torch.stack(outputs_mean) # num_samples*batch_size*num_classes
         model_variance = torch.var(outputs_mean, dim=0)
@@ -391,7 +393,7 @@ def compute_preds(args, net, inputs, use_mcdo=False):
     return outputs_mean, model_variance
 
 
-def evaluate_uncertainity(args, net, snapshot_path, parser, use_mcdo=True):
+def evaluate_uncertainity(args, net, snapshot_path, parser, use_salsa=False, use_mcdo=True):
     net.eval()
     test_loss = 0
     correct = 0
@@ -428,7 +430,7 @@ def evaluate_uncertainity(args, net, snapshot_path, parser, use_mcdo=True):
             # print("inputs shape")
             # print(inputs.shape)
             
-            outputs_mean, model_variance = compute_preds(args, net, inputs, use_mcdo)
+            outputs_mean, model_variance = compute_preds(args, net, inputs, use_salsa, use_mcdo)
             
             if model_variance is not None:
                 outputs_variance = model_variance + args.tau

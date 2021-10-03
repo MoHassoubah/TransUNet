@@ -23,6 +23,8 @@ parser.add_argument('--root_path', type=str,
                     default=DATA_DIRECTORY, help='root dir for data')
 parser.add_argument('--restore_from', type=str,
                     default=DATA_DIRECTORY, help='root dir for data')
+parser.add_argument('--restore_from_dir', type=str,
+                    default=RESTORE_FROM_DIRECTORY, help='root dir for pre-trained weights')
 parser.add_argument('--dataset', type=str,
                     default='Kitti', help='experiment_name')
 parser.add_argument('--list_dir', type=str,
@@ -51,7 +53,7 @@ parser.add_argument('--vit_name', type=str,
 parser.add_argument('--vit_patches_size', type=int,
                     default=16, help='vit_patches_size, default is 16')
 
-parser.add_argument('--pretrain', action='store_true', default=False, help='Enabling pretraining')
+parser.add_argument('--bn_pretrain', action='store_true', default=False, help='Enabling pretraining')
 parser.add_argument('--evaluate_noise_robustness', action='store_true', default=False, help='Enabling evaluation of noise robustness')
 parser.add_argument('--evaluate_uncertainity', action='store_true', default=False, help='Enabling evaluation of model uncertainity')
 parser.add_argument('--evaluate_model', action='store_true', default=False, help='Enabling evaluation of model iou')
@@ -63,6 +65,8 @@ parser.add_argument('--noise_variance', default=1e-4, type=float,
                     help='noise variance')
 parser.add_argument('--min_variance', default=1e-4, type=float, 
                     help='min variance')
+parser.add_argument('--use_salsa', action='store_true', default=False, help='use salsaNext module')
+parser.add_argument('--use_transunet_enc_dec', action='store_true', default=False, help='use the decoder and encoder blocks from the TransUnet architecture else use those from salsaNext architecture')
 parser.add_argument(
   '--data_kitti_cfg', '-dck',
   type=str,
@@ -202,10 +206,14 @@ if __name__ == "__main__":
     config_vit.n_skip = args.n_skip
     if args.vit_name.find('R50') != -1:
         config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
-    # net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,pretrain=args.pretrain,\
-    # dropout_rate=args.p, eval_uncer=True).cuda()
-    
-    net = SalsaNext(kitti_parser.get_n_classes()).cuda()
+        
+    if(args.use_salsa):
+        net = SalsaNext(kitti_parser.get_n_classes()).cuda()
+    else:
+        #after the '\' avoid adding any characters as this would raise error
+        net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,bn_pretrain=args.bn_pretrain, use_tranunet_enc_dec=args.use_transunet_enc_dec,\
+        dropout_rate=0.2, eval_uncer=True).cuda()
+        
     # if args.pretrain:
         # net.apply(weights_init)
     # else:
@@ -214,7 +222,7 @@ if __name__ == "__main__":
         # net.apply(weights_init)
     #################
     # new_params = net.state_dict().copy()
-    saved_state_dict = torch.load(RESTORE_FROM_DIRECTORY + '\\' +args.restore_from+'.pth')
+    saved_state_dict = torch.load(args.restore_from_dir + '\\' +args.restore_from+'.pth')
 
     # saved_state_dict = {k: v for k, v in saved_state_dict.items() if k in new_params}
     # new_params.update(saved_state_dict) 
@@ -232,4 +240,4 @@ if __name__ == "__main__":
 
     eval = {'Noise_Robustness': eval_noise_robustness,'Uncertainity_Calculation': evaluate_uncertainity, 'eval_model_IoU': eval_model,}
     
-    eval[evaluation_type](args, net, snapshot_path,kitti_parser)
+    eval[evaluation_type](args, net, snapshot_path,kitti_parser, args.use_salsa)
