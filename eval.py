@@ -53,7 +53,7 @@ parser.add_argument('--vit_name', type=str,
 parser.add_argument('--vit_patches_size', type=int,
                     default=16, help='vit_patches_size, default is 16')
 
-parser.add_argument('--bn_pretrain', action='store_true', default=False, help='Enabling pretraining')
+parser.add_argument('--bn_pretrain', action='store_true', default=False, help='use Batch normalisation of the pretraining')
 parser.add_argument('--evaluate_noise_robustness', action='store_true', default=False, help='Enabling evaluation of noise robustness')
 parser.add_argument('--evaluate_uncertainity', action='store_true', default=False, help='Enabling evaluation of model uncertainity')
 parser.add_argument('--evaluate_model', action='store_true', default=False, help='Enabling evaluation of model iou')
