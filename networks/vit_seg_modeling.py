@@ -307,13 +307,15 @@ class Encoder(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, config, img_size, vis, bn_pretrain=False,pretrain=False, use_tranunet_enc_dec=False, dropout_rate=0.2,eval_uncer=False):
+    def __init__(self, config, img_size, vis, rm_transformer=False, bn_pretrain=False,pretrain=False, use_tranunet_enc_dec=False, dropout_rate=0.2,eval_uncer=False):
         super(Transformer, self).__init__()
         self.pretrain = pretrain
+        self.rm_transformer = rm_transformer
             
         self.embeddings = Embeddings(config, img_size=img_size, bn_pretrain=bn_pretrain,pretrain=pretrain, use_tranunet_enc_dec=use_tranunet_enc_dec,\
         dropout_rate=dropout_rate, eval_uncer=eval_uncer)
-        self.encoder = Encoder(config, vis,pretrain=pretrain)
+        if rm_transformer==False:
+            self.encoder = Encoder(config, vis,pretrain=pretrain)
 
     def forward(self, input_ids):
         embedding_output, features,bfr_flat_size_2,bfr_flat_size_3 = self.embeddings(input_ids)
@@ -321,10 +323,13 @@ class Transformer(nn.Module):
         # if self.pretrain:
             # x_rot, x_contrastive, encoded, attn_weights = self.encoder(embedding_output)
             # return x_rot, x_contrastive, encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
-            
-        encoded, attn_weights = self.encoder(embedding_output)  # (B, n_patch, hidden)
-        # encoded =  torch.cat([encoded , hybrid_output], dim=2)
-        return encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
+        
+        if self.rm_transformer==False:
+            encoded, attn_weights = self.encoder(embedding_output)  # (B, n_patch, hidden)
+            # encoded =  torch.cat([encoded , hybrid_output], dim=2)
+            return encoded, attn_weights, features,bfr_flat_size_2,bfr_flat_size_3
+        else:
+            return embedding_output, None, features,bfr_flat_size_2,bfr_flat_size_3
 
 
 class Conv2dReLU(nn.Sequential):
@@ -594,15 +599,15 @@ class DecoderCup_TransUnet(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, bn_pretrain=False, pretrain=False, \
+    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, rm_transformer=False, bn_pretrain=False, pretrain=False, \
     use_tranunet_enc_dec=False, dropout_rate=0.2,eval_uncer=False):
         super(VisionTransformer, self).__init__()
         self.pretrain = pretrain
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
-        self.transformer = Transformer(config, img_size, vis, bn_pretrain=bn_pretrain,pretrain=pretrain, use_tranunet_enc_dec=use_tranunet_enc_dec,\
-        dropout_rate=dropout_rate ,eval_uncer=eval_uncer)
+        self.transformer = Transformer(config, img_size, vis, rm_transformer=rm_transformer, bn_pretrain=bn_pretrain,\
+        pretrain=pretrain, use_tranunet_enc_dec=use_tranunet_enc_dec, dropout_rate=dropout_rate ,eval_uncer=eval_uncer)
         # if self.pretrain:
         if(use_tranunet_enc_dec):
             self.decoder = DecoderCup_TransUnet(config, dropout_rate=dropout_rate, eval_uncer=eval_uncer)

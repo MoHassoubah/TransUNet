@@ -57,6 +57,7 @@ parser.add_argument('--pretrain', action='store_true', default=False, help='Enab
 parser.add_argument('--bn_pretrain', action='store_true', default=False, help='use Batch normalisation of the pretraining')
 parser.add_argument('--use_salsa', action='store_true', default=False, help='use salsaNext module')
 parser.add_argument('--use_transunet_enc_dec', action='store_true', default=False, help='use the decoder and encoder blocks from the TransUnet architecture else use those from salsaNext architecture')
+parser.add_argument('--remove_Transformer', action='store_true', default=False, help='remove the Transformer from the architecture')
 parser.add_argument(
   '--data_kitti_cfg', '-dck',
   type=str,
@@ -201,8 +202,8 @@ if __name__ == "__main__":
         net = SalsaNext(kitti_parser.get_n_classes()).cuda()
     else:
         #after the '\' avoid adding any characters as this would raise error
-        net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,bn_pretrain=args.bn_pretrain, use_tranunet_enc_dec=args.use_transunet_enc_dec,\
-        dropout_rate=0.2, eval_uncer=True).cuda()
+        net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,rm_transformer=args.remove_Transformer,\
+        bn_pretrain=args.bn_pretrain, use_tranunet_enc_dec=args.use_transunet_enc_dec, dropout_rate=0.2, eval_uncer=True).cuda()
     
     if args.pretrain or args.use_salsa:
         net.apply(weights_init)
