@@ -84,9 +84,13 @@ def make_log_img(depth_gt, depth_gt_reduced, depth_pred, mask, mask_reduced, pre
         
     return (out_img).astype(np.uint8)
     
-def save_img(depth_gt, depth_gt_reduced, depth_pred, proj_mask, proj_mask_reduced, seg_outputs, proj_labels, parser_to_color, i_iter, eval=False):
+def save_img(depth_gt, depth_gt_reduced, depth_pred, proj_mask, proj_mask_reduced, seg_outputs, proj_labels, parser_to_color, i_iter,model_name, eval=False):
     
-    SAVE_PATH_kitti = '../result_train'
+    # SAVE_PATH_kitti = '../result_train'+ '\\' + model_name
+    SAVE_PATH_kitti = os.path.join('../result_train',model_name)
+    if not os.path.exists(SAVE_PATH_kitti):
+        os.makedirs(SAVE_PATH_kitti)
+        # print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>')
     # if eval:
     output = seg_outputs[0].permute(1,2,0).cpu().numpy()
     output = np.asarray(np.argmax(output, axis=2), dtype=np.uint8)
@@ -94,10 +98,10 @@ def save_img(depth_gt, depth_gt_reduced, depth_pred, proj_mask, proj_mask_reduce
     gt_np = proj_labels[0].cpu().numpy()
     
     depth_gt_np = depth_gt[0][0].cpu().numpy()
-    # depth_gt_reduced_np = depth_gt_reduced[0][0].cpu().numpy()
-    # depth_pred_np = depth_pred[0][0].cpu().numpy()
+    depth_gt_reduced_np = depth_gt_reduced#[0][0].cpu().numpy()
+    depth_pred_np = depth_pred#[0][0].cpu().numpy()
     mask_np = proj_mask[0].cpu().numpy()
-    # mask_np_reduced =proj_mask_reduced[0].cpu().numpy()
+    mask_np_reduced =proj_mask_reduced#[0].cpu().numpy()
     out = make_log_img(depth_gt_np, depth_gt_reduced_np, None, mask_np, mask_np_reduced, output, parser_to_color, gt_np, pretrain=eval )
     
     
@@ -114,7 +118,7 @@ def save_img(depth_gt, depth_gt_reduced, depth_pred, proj_mask, proj_mask_reduce
     name_2_save = os.path.join(SAVE_PATH_kitti, '_'+str(i_iter) + '.png')
     cv2.imwrite(name_2_save, out)
         
-def eval_model(args, model, snapshot_path, parser, post=None):
+def eval_model(args, model, snapshot_path, parser,model_name, post=None):
     from datasets.dataset_synapse import Synapse_dataset, RandomGenerator
     logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
@@ -184,36 +188,36 @@ def eval_model(args, model, snapshot_path, parser, post=None):
         for index, batch_data in enumerate(valid_loader):
             if index % 100 == 0:
                 print('%d validation iter processd' % index)
+                    
+                (inputs, proj_mask, targets, unproj_targets, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, _) = batch_data
+                   
+                            
+                inputs, targets = inputs.cuda(), targets.cuda(non_blocking=True).long()
+                # reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion 
+                proj_range, unproj_range, p_x, p_y, unproj_targets= proj_range.cuda(), unproj_range.cuda(), p_x.cuda(), p_y.cuda(), unproj_targets.cuda()
                 
-            (inputs, proj_mask, targets, unproj_targets, path_seq, path_name, p_x, p_y, proj_range, unproj_range, _, _, _, _, _) = batch_data
-               
-                        
-            inputs, targets = inputs.cuda(), targets.cuda(non_blocking=True).long()
-            # reduced_image_batch = reduced_image_batch.to(device, non_blocking=True) # Apply distortion 
-            proj_range, unproj_range, p_x, p_y, unproj_targets= proj_range.cuda(), unproj_range.cuda(), p_x.cuda(), p_y.cuda(), unproj_targets.cuda()
-            
-            outputs = model(inputs)
-            
-            argmax = outputs.argmax(dim=1)
-            unproj_argmax_batch = []
-            for i in range(0,args.batch_size):
-                unproj_argmax = post(proj_range[i],
-                                            unproj_range[i],
-                                            argmax[i],
-                                            p_x[i],
-                                            p_y[i])
-                unproj_argmax_batch.append(unproj_argmax)
-            
-            evaluator.addBatch(argmax, targets)
-            unproj_argmax_batch_tensor=  torch.stack(unproj_argmax_batch,0)
-            
-            evaluator_3d.addBatch(unproj_argmax_batch_tensor, unproj_targets)
-            
-            # if iter_num % 50 == 0 and iter_num != 0:
-                # save_img(inputs, None, None, proj_mask, None, outputs, targets, parser.to_color, iter_num, eval=True)
+                outputs = model(inputs)
                 
-            
-            iter_num = iter_num + 1
+                argmax = outputs.argmax(dim=1)
+                unproj_argmax_batch = []
+                for i in range(0,args.batch_size):
+                    unproj_argmax = post(proj_range[i],
+                                                unproj_range[i],
+                                                argmax[i],
+                                                p_x[i],
+                                                p_y[i])
+                    unproj_argmax_batch.append(unproj_argmax)
+                
+                evaluator.addBatch(argmax, targets)
+                unproj_argmax_batch_tensor=  torch.stack(unproj_argmax_batch,0)
+                
+                evaluator_3d.addBatch(unproj_argmax_batch_tensor, unproj_targets)
+                
+                # if iter_num % 50 == 0 and iter_num != 0:
+                save_img(inputs, None, None, proj_mask, None, outputs, targets, parser.to_color, iter_num,model_name, eval=True)
+                    
+                
+                iter_num = iter_num + 1
         jaccard, class_jaccard = evaluator.getIoU()
         jaccard_3d, class_jaccard_3d = evaluator_3d.getIoU()
         accura = evaluator.getacc()

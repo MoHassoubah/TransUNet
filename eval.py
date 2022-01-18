@@ -23,7 +23,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
                     default=DATA_DIRECTORY, help='root dir for data')
 parser.add_argument('--restore_from', type=str,
-                    default=DATA_DIRECTORY, help='root dir for data')
+                    default=DATA_DIRECTORY, help='Which initialisation file')
 parser.add_argument('--restore_from_dir', type=str,
                     default=RESTORE_FROM_DIRECTORY, help='root dir for pre-trained weights')
 parser.add_argument('--dataset', type=str,
@@ -195,7 +195,7 @@ if __name__ == "__main__":
                           workers=ARCH["train"]["workers"],
                           max_iters=None,
                           gt=True,
-                          shuffle_train=True,
+                          shuffle_train=False, #true
                           nuscenes_dataset=False,
                           evaluate = args.evaluate_noise_robustness)
                           
@@ -215,12 +215,6 @@ if __name__ == "__main__":
     if args.vit_name.find('R50') != -1:
         config_vit.patches.grid = (int(args.img_size[0] / args.vit_patches_size), int(args.img_size[1] / args.vit_patches_size))
         
-    if(args.use_salsa):
-        net = SalsaNext(kitti_parser.get_n_classes()).cuda()
-    else:
-        #after the '\' avoid adding any characters as this would raise error
-        net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,rm_transformer=args.remove_Transformer,\
-        bn_pretrain=args.bn_pretrain, use_tranunet_enc_dec=args.use_transunet_enc_dec, dropout_rate=0.2, eval_uncer=True).cuda()
         
     # if args.pretrain:
         # net.apply(weights_init)
@@ -230,22 +224,62 @@ if __name__ == "__main__":
         # net.apply(weights_init)
     #################
     # new_params = net.state_dict().copy()
-    saved_state_dict = torch.load(args.restore_from_dir + '\\' +args.restore_from+'.pth')
 
-    # saved_state_dict = {k: v for k, v in saved_state_dict.items() if k in new_params}
-    # new_params.update(saved_state_dict) 
+          # get files
+    restored_models = [os.path.join(dp, f) for dp, dn, fn in os.walk(
+        os.path.expanduser(args.restore_from_dir)) for f in fn]
+        
+    # print(restored_models[2])
+    # print(restored_models[5])
+    # model_name = restored_models[5].split('\\')[6]
+    # # model_name = restored_models[5].split('\\')[6].split('.')[0]
+    # print(model_name)
     
-    net.load_state_dict(saved_state_dict)
-    ################
-    if args.evaluate_noise_robustness:
-        evaluation_type='Noise_Robustness'
-    elif args.evaluate_model:
-        evaluation_type='eval_model_IoU'
+    for model in restored_models:
+        # print(model)
+        saved_state_dict = torch.load(model)
+        # print(saved_state_dict)
+        model_name = model.split('\\')[7].split('.')[0]
+        architecture = model.split('\\')[6]
+        print(model_name)
+        print(architecture)
+        if architecture == 'enc_dec_salsa_bn_pretrain':
+            arch_flags = {'salsa':False, 'enc_dec_transunet':False, 'rm_transformer':False, 'bn_pretrain':True, 'dec_scratch':False}
+        elif architecture == 'enc_dec_transunet':
+            arch_flags = {'salsa':False, 'enc_dec_transunet':True, 'rm_transformer':False, 'bn_pretrain':False, 'dec_scratch':False}
+        elif architecture == 'enc_dec_transunet_dec_scratch':
+            arch_flags = {'salsa':False, 'enc_dec_transunet':True, 'rm_transformer':False, 'bn_pretrain':False, 'dec_scratch':True}
+        elif architecture == 'enc_dec_transunet_rm_transformer':
+            arch_flags = {'salsa':False, 'enc_dec_transunet':True, 'rm_transformer':True, 'bn_pretrain':False, 'dec_scratch':False}
+        elif architecture == 'salsa':
+            arch_flags = {'salsa':True, 'enc_dec_transunet':False, 'rm_transformer':False, 'bn_pretrain':False, 'dec_scratch':False}
+        else:
+            arch_flags = {'salsa':False, 'enc_dec_transunet':False, 'rm_transformer':False, 'bn_pretrain':False, 'dec_scratch':False}
+            
+        print(arch_flags)
         
-    else:
-        evaluation_type='Uncertainity_Calculation'
-        
+        if(arch_flags['salsa']):
+            net = SalsaNext(kitti_parser.get_n_classes()).cuda()
+        else:
+            #after the '\' avoid adding any characters as this would raise error
+            net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes,rm_transformer=arch_flags['rm_transformer'],\
+            bn_pretrain=arch_flags['bn_pretrain'], use_tranunet_enc_dec=arch_flags['enc_dec_transunet'], dec_scratch=arch_flags['dec_scratch']\
+            ,dropout_rate=0.2, eval_uncer=False).cuda()
 
-    eval = {'Noise_Robustness': eval_noise_robustness,'Uncertainity_Calculation': evaluate_uncertainity, 'eval_model_IoU': eval_model,}
-    
-    eval[evaluation_type](args, net, snapshot_path,kitti_parser, post=post)
+        # saved_state_dict = {k: v for k, v in saved_state_dict.items() if k in new_params}
+        # new_params.update(saved_state_dict) 
+        
+        net.load_state_dict(saved_state_dict)
+        ################
+        if args.evaluate_noise_robustness:
+            evaluation_type='Noise_Robustness'
+        elif args.evaluate_model:
+            evaluation_type='eval_model_IoU'
+            
+        else:
+            evaluation_type='Uncertainity_Calculation'
+            
+
+        eval = {'Noise_Robustness': eval_noise_robustness,'Uncertainity_Calculation': evaluate_uncertainity, 'eval_model_IoU': eval_model,}
+        
+        eval[evaluation_type](args, net, snapshot_path,kitti_parser,architecture+'_'+model_name, post=post)

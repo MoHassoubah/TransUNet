@@ -603,7 +603,7 @@ class DecoderCup_TransUnet(nn.Module):
 
 class VisionTransformer(nn.Module):
     def __init__(self, config, img_size=224, num_classes=21843, low_dim=512, zero_head=False, vis=False, rm_transformer=False, bn_pretrain=False, pretrain=False, \
-    contrastive=False, use_tranunet_enc_dec=False, dropout_rate=0.2,eval_uncer=False):
+    contrastive=False, use_tranunet_enc_dec=False, dec_scratch=False, dropout_rate=0.2,eval_uncer=False):
         super(VisionTransformer, self).__init__()
         self.pretrain = pretrain
         self.contrastive = contrastive
@@ -612,8 +612,12 @@ class VisionTransformer(nn.Module):
         self.classifier = config.classifier
         self.transformer = Transformer(config, img_size, vis,low_dim=low_dim, rm_transformer=rm_transformer, bn_pretrain=bn_pretrain,\
         pretrain=pretrain, contrastive=contrastive, use_tranunet_enc_dec=use_tranunet_enc_dec, dropout_rate=dropout_rate ,eval_uncer=eval_uncer)
+        self.dec_scratch = dec_scratch
         # if self.pretrain:
-        if(use_tranunet_enc_dec):
+        if dec_scratch:
+            self.decoder_finetune = DecoderCup_TransUnet(config, dropout_rate=dropout_rate, eval_uncer=eval_uncer)
+            in_chs=  config['decoder_channels'][-1]
+        elif(use_tranunet_enc_dec):
             self.decoder = DecoderCup_TransUnet(config, dropout_rate=dropout_rate, eval_uncer=eval_uncer)
             in_chs=  config['decoder_channels'][-1]
         else:
@@ -654,7 +658,10 @@ class VisionTransformer(nn.Module):
         # print("x in vision transformer")
         # print(x.size())
         # if self.pretrain:
-        x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
+        if self.dec_scratch:
+            x = self.decoder_finetune(x,bfr_flat_size_2,bfr_flat_size_3, features)        
+        else:
+            x = self.decoder(x,bfr_flat_size_2,bfr_flat_size_3, features)
         # else:
             # x = self.decoder_finetune(x,bfr_flat_size_2,bfr_flat_size_3, features)
         if self.pretrain:
